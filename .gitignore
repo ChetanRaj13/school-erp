@@ -36,3 +36,33 @@ coverage/
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# Claude / AI logs
+.agent-log/
+.claude/
+
+# Node
+node_modules/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Environment
+.env
+.env.local
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
