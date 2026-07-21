@@ -1,0 +1,58 @@
+create schema if not exists finance;
+
+-- Dynamic Fee Engine: fee heads a school can create/edit/remove
+create table if not exists finance.fee_heads (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,                 -- e.g. Tuition, Transport, Late Fee
+  amount numeric(12,2) not null,
+  recurring boolean default true,
+  created_at timestamptz default now()
+);
+
+create table if not exists finance.student_fees (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid references public.students(id) on delete cascade,
+  fee_head_id uuid references finance.fee_heads(id),
+  due_amount numeric(12,2) not null,
+  due_date date,
+  status text default 'pending' check (status in ('pending','partial','paid','waived'))
+);
+
+create table if not exists finance.transactions (
+  id uuid primary key default gen_random_uuid(),
+  student_fee_id uuid references finance.student_fees(id),
+  amount numeric(12,2) not null,
+  method text not null check (method in ('upi','card','netbanking','link','neft','cash','cheque','dd','smart_pos')),
+  status text default 'pending' check (status in ('pending','cleared','bounced','failed')),
+  reference_no text,                  -- cheque/DD/UTR number
+  recorded_by uuid references public.staff(id),
+  created_at timestamptz default now()
+);
+
+create table if not exists finance.institutional_credits (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid references public.students(id),
+  type text check (type in ('scholarship','grant','sponsorship','loan','waiver')),
+  amount numeric(12,2) not null,
+  supporting_doc_url text,
+  approved_by uuid references public.staff(id),
+  status text default 'pending' check (status in ('pending','approved','rejected'))
+);
+
+create table if not exists finance.payroll (
+  id uuid primary key default gen_random_uuid(),
+  staff_id uuid references public.staff(id),
+  month date not null,
+  base_salary numeric(12,2) not null,
+  deductions numeric(12,2) default 0,   -- unpaid absence
+  extra_duty_pay numeric(12,2) default 0, -- from scheduling.substitutions
+  net_pay numeric(12,2),
+  created_at timestamptz default now()
+);
+
+-- RLS: enable + policies to be added in supabase/policies/finance.sql
+alter table finance.fee_heads enable row level security;
+alter table finance.student_fees enable row level security;
+alter table finance.transactions enable row level security;
+alter table finance.institutional_credits enable row level security;
+alter table finance.payroll enable row level security;

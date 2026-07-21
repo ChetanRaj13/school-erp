@@ -1,0 +1,246 @@
+{
+  "class_name": "8-A",
+  "date": "2026-07-19",
+  "results": [
+    {
+      "roll_no": 1,
+      "status": "present",
+      "confidence": 0.69,
+      "needs_review": false
+    },
+    {
+      "roll_no": 2,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 3,
+      "status": "present",
+      "confidence": 0.69,
+      "needs_review": false
+    },
+    {
+      "roll_no": 4,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 5,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 6,
+      "status": "present",
+      "confidence": 0.67,
+      "needs_review": false
+    },
+    {
+      "roll_no": 7,
+      "status": "absent",
+      "confidence": 0.66,
+      "needs_review": false
+    },
+    {
+      "roll_no": 8,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 9,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 10,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 11,
+      "status": "present",
+      "confidence": 0.67,
+      "needs_review": false
+    },
+    {
+      "roll_no": 12,
+      "status": "present",
+      "confidence": 0.67,
+      "needs_review": false
+    },
+    {
+      "roll_no": 13,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 14,
+      "status": "present",
+      "confidence": 0.7,
+      "needs_review": false
+    },
+    {
+      "roll_no": 15,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 16,
+      "status": "present",
+      "confidence": 0.69,
+      "needs_review": false
+    },
+    {
+      "roll_no": 17,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 18,
+      "status": "present",
+      "confidence": 0.66,
+      "needs_review": false
+    },
+    {
+      "roll_no": 19,
+      "status": "present",
+      "confidence": 0.7,
+      "needs_review": false
+    },
+    {
+      "roll_no": 20,
+      "status": "present",
+      "confidence": 0.67,
+      "needs_review": false
+    },
+    {
+      "roll_no": 21,
+      "status": "present",
+      "confidence": 0.7,
+      "needs_review": false
+    },
+    {
+      "roll_no": 22,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 23,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 24,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 25,
+      "status": "absent",
+      "confidence": 0.65,
+      "needs_review": false
+    },
+    {
+      "roll_no": 26,
+      "status": "present",
+      "confidence": 0.69,
+      "needs_review": false
+    },
+    {
+      "roll_no": 27,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 28,
+      "status": "present",
+      "confidence": 0.7,
+      "needs_review": false
+    },
+    {
+      "roll_no": 29,
+      "status": "present",
+      "confidence": 0.69,
+      "needs_review": false
+    },
+    {
+      "roll_no": 30,
+      "status": "present",
+      "confidence": 0.69,
+      "needs_review": false
+    },
+    {
+      "roll_no": 31,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 32,
+      "status": "present",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 33,
+      "status": "present",
+      "confidence": 0.7,
+      "needs_review": false
+    },
+    {
+      "roll_no": 34,
+      "status": "absent",
+      "confidence": 0.68,
+      "needs_review": false
+    },
+    {
+      "roll_no": 35,
+      "status": "present",
+      "confidence": 0.69,
+      "needs_review": false
+    },
+    {
+      "roll_no": 36,
+      "status": "present",
+      "confidence": 0.67,
+      "needs_review": false
+    },
+    {
+      "roll_no": 37,
+      "status": "present",
+      "confidence": 0.66,
+      "needs_review": false
+    },
+    {
+      "roll_no": 38,
+      "status": "present",
+      "confidence": 0.67,
+      "needs_review": false
+    },
+    {
+      "roll_no": 39,
+      "status": "absent",
+      "confidence": 0.69,
+      "needs_review": false
+    },
+    {
+      "roll_no": 40,
+      "status": "present",
+      "confidence": 0.7,
+      "needs_review": false
+    }
+  ]
+}

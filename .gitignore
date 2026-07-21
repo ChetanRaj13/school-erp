@@ -1,0 +1,38 @@
+# Flutter
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.pub-cache/
+app/.pub/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Env / secrets
+.env
+.env.local
+**/*.env
+supabase/.temp/
+
+# OS
+.DS_Store
+
+# Generated OMR output (regeneratable, keep repo light)
+services/omr-pipeline/output/*
+!services/omr-pipeline/output/.gitkeep
+
+node_modules/
+.env
+dist/
+build/
+.next/
+coverage/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*

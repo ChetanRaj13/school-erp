@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase --version)",
+      "Bash(supabase projects *)",
+      "Bash(npx supabase *)",
+      "Bash(winget install *)",
+      "Bash(winget search *)",
+      "Bash(set -e)",
+      "Bash(mkdir -p /c/Users/rajch/bin)",
+      "Bash(cd /tmp)",
+      "Bash(curl -sL -o supabase.zip https://github.com/supabase/cli/releases/download/v2.109.1/supabase_2.109.1_windows_amd64.zip)",
+      "Bash(unzip -o supabase.zip supabase.exe -d /c/Users/rajch/bin)",
+      "Read(//c/Users/rajch/.supabase/**)",
+      "Bash(powershell.exe -NoProfile -Command 'Start-Process \"$env:USERPROFILE\\\\Downloads\\\\webhook-test-harness.html\"')",
+      "Bash(curl -s -u \"rzp_test_TFTM0iK32mVuvJ:CaVy7TGl9eN4lJ0ILr7OCQyQ\" \"https://api.razorpay.com/v1/payments\")",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s -u \"rzp_test_TFTM0iK32mVuvJ:CaVy7TGl9eN4lJ0ILr7OCQyQ\" \"https://api.razorpay.com/v1/payments/pay_TG7QqgoNb3yrsT\")",
+      "Bash(curl -s -H 'apikey: 5174a908a5b1876a0a2630e198ee39bc968439d0f350f1e7bc66925e7c0a0840' -H 'Authorization: Bearer 5174a908a5b1876a0a2630e198ee39bc968439d0f350f1e7bc66925e7c0a0840' https://yhcyhwpdgqupylrnkqht.supabase.co/functions/v1/logs/razorpay-webhook)",
+      "Bash(python -c \"from datetime import datetime,timezone; print\\(datetime.fromtimestamp\\(1784629528, tz=timezone.utc\\)\\)\")",
+      "Bash(curl -s -X POST https://yhcyhwpdgqupylrnkqht.supabase.co/functions/v1/razorpay-webhook ^)",
+      "Bash(curl -s -u \"rzp_test_TFTM0iK32mVuvJ:CaVy7TGl9eN4lJ0ILr7OCQyQ\" \"https://api.razorpay.com/v1/orders/order_TG7OuJjKC1MKim\")",
+      "Bash(curl -s -u \"rzp_test_TFTM0iK32mVuvJ:CaVy7TGl9eN4lJ0ILr7OCQyQ\" \"https://api.razorpay.com/v1/webhooks\")",
+      "Bash(curl -s -u \"rzp_test_TFTM0iK32mVuvJ:CaVy7TGl9eN4lJ0ILr7OCQyQ\" \"https://api.razorpay.com/v1/webhooks/TG4M4zjOMj3Ix6/deliveries?begin_time=1784629400&end_time=1784629700\")",
+      "Bash(python *)"
+    ]
+  }
+}
