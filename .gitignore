@@ -17,6 +17,7 @@ venv/
 .env.local
 **/*.env
 supabase/.temp/
+app/dart_define.json
 
 # OS
 .DS_Store
@@ -66,3 +67,11 @@ __pycache__/
 # macOS / Windows
 .DS_Store
 Thumbs.db
+
+.razorpay_webhook_secret.local
+
+TASK*.txt
+.server_*.log
+build-web-error.txt
+
+services/omr-pipeline/_last_scan_response.json

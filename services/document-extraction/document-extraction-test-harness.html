@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document Extraction Test Harness</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    h1 { font-size: 1.6rem; font-weight: 700; color: #a78bfa; margin-bottom: 0.25rem; }
+    .subtitle { color: #64748b; font-size: 0.875rem; margin-bottom: 2rem; }
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.35rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: #a78bfa; }
+    input[type="file"] { cursor: pointer; }
+    button {
+      margin-top: 1rem;
+      width: 100%;
+      padding: 0.75rem;
+      background: linear-gradient(135deg, #7c3aed, #a78bfa);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:hover { opacity: 0.9; }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.commit { background: linear-gradient(135deg, #059669, #34d399); margin-top: 1.5rem; }
+    .status { margin-top: 0.75rem; font-size: 0.85rem; color: #64748b; min-height: 1.2em; }
+    .status.error { color: #f87171; }
+    .status.ok { color: #34d399; }
+    #draft-box { display: none; margin-top: 1.5rem; }
+    .section-title {
+      font-size: 0.8rem; color: #64748b; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em; margin: 1.25rem 0 0.75rem;
+    }
+    .field-row {
+      display: grid;
+      grid-template-columns: 160px 1fr 90px;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.6rem;
+    }
+    .field-key { font-size: 0.8rem; color: #94a3b8; font-weight: 600; }
+    .field-val {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      padding: 0.45rem 0.6rem;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.2s;
+    }
+    .field-val:focus { border-color: #a78bfa; }
+    .conf-badge {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .conf-high { background: rgba(52,211,153,0.12); color: #34d399; }
+    .conf-low  { background: rgba(248,113,113,0.12); color: #f87171; }
+    .conf-mid  { background: rgba(251,191,36,0.12);  color: #fbbf24; }
+    .uncertain-banner {
+      background: rgba(248,113,113,0.08);
+      border-left: 3px solid #f87171;
+      padding: 0.6rem 0.85rem;
+      border-radius: 4px;
+      color: #fca5a5;
+      font-size: 0.82rem;
+      margin-bottom: 1rem;
+    }
+    .model-tag { font-size: 0.72rem; color: #64748b; margin-top: 0.5rem; }
+    .raw-json {
+      background: #0f1117; border-radius: 8px; padding: 1rem;
+      font-size: 0.72rem; color: #64748b; overflow: auto;
+      white-space: pre; margin-top: 1rem; max-height: 220px;
+    }
+    .commit-result {
+      background: rgba(52,211,153,0.08);
+      border-left: 3px solid #34d399;
+      padding: 0.75rem 1rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #a7f3d0;
+      margin-top: 1rem;
+      display: none;
+    }
+    #preview-img { max-width: 100%; border-radius: 8px; margin-top: 0.75rem; display: none; }
+  </style>
+</head>
+<body>
+  <h1>Document Extraction</h1>
+  <p class="subtitle">Vision-LLM admission-form extraction — human-in-the-loop review before commit</p>
+
+  <!-- Step 1: Upload + Extract -->
+  <div class="card">
+    <div class="section-title">Step 1 — Upload admission form image</div>
+    <label>Service URL</label>
+    <input type="text" id="svc-url" value="http://localhost:8003" />
+    <label style="margin-top:1rem;">Image file</label>
+    <input type="file" id="img-file" accept="image/*" onchange="previewImage(this)" />
+    <img id="preview-img" />
+    <button id="extract-btn" onclick="doExtract()">Extract Fields</button>
+    <div class="status" id="extract-status"></div>
+  </div>
+
+  <!-- Step 2: Review + Commit -->
+  <div class="card" id="draft-box">
+    <div class="section-title">Step 2 — Review extracted fields</div>
+    <div id="uncertain-banner" class="uncertain-banner" style="display:none;"></div>
+    <div id="fields-area"></div>
+    <div class="model-tag" id="model-tag"></div>
+
+    <div class="section-title" style="margin-top:1.5rem;">Commit to students table</div>
+    <label>Student ID (leave blank to create new)</label>
+    <input type="text" id="student-id-input" placeholder="existing UUID or leave blank" />
+    <button class="commit" id="commit-btn" onclick="doCommit()">Commit Reviewed Fields</button>
+    <div class="status" id="commit-status"></div>
+    <div class="commit-result" id="commit-result"></div>
+
+    <div class="section-title">Raw extracted JSON</div>
+    <div class="raw-json" id="raw-json"></div>
+  </div>
+
+  <script>
+    let currentFormId = null;
+    // Fields eligible for commit into public.students
+    const STUDENT_COLS = ['full_name', 'admission_number', 'guardian_contact'];
+
+    function previewImage(input) {
+      const img = document.getElementById('preview-img');
+      if (input.files && input.files[0]) {
+        img.src = URL.createObjectURL(input.files[0]);
+        img.style.display = 'block';
+      }
+    }
+
+    function confClass(c) {
+      if (c == null) return 'conf-mid';
+      if (c >= 0.85) return 'conf-high';
+      if (c >= 0.7)  return 'conf-mid';
+      return 'conf-low';
+    }
+
+    function confLabel(c) {
+      if (c == null) return '?';
+      return (c * 100).toFixed(0) + '%';
+    }
+
+    async function doExtract() {
+      const url = document.getElementById('svc-url').value.trim();
+      const fileInput = document.getElementById('img-file');
+      const status = document.getElementById('extract-status');
+      const btn = document.getElementById('extract-btn');
+
+      if (!fileInput.files || !fileInput.files[0]) {
+        status.textContent = 'Select an image file first.';
+        status.className = 'status error';
+        return;
+      }
+
+      btn.disabled = true;
+      status.textContent = 'Sending to Vision-LLM…';
+      status.className = 'status';
+
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+
+      try {
+        const resp = await fetch(`${url}/documents/extract`, { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || resp.statusText);
+
+        currentFormId = data.form_id;
+        renderDraft(data);
+        status.textContent = `Extracted — form_id: ${data.form_id}`;
+        status.className = 'status ok';
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'status error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderDraft(data) {
+      const fields = data.fields || {};
+      const uncertain = data.uncertain_fields || [];
+
+      // Uncertain banner
+      const banner = document.getElementById('uncertain-banner');
+      if (uncertain.length) {
+        banner.style.display = 'block';
+        banner.textContent = `⚠ Low-confidence fields (needs review): ${uncertain.join(', ')}`;
+      } else {
+        banner.style.display = 'none';
+      }
+
+      // Fields
+      const area = document.getElementById('fields-area');
+      area.innerHTML = '';
+
+      // Render student-eligible fields first, then extras
+      const allKeys = Object.keys(fields);
+      const ordered = [...STUDENT_COLS.filter(k => allKeys.includes(k)),
+                       ...allKeys.filter(k => !STUDENT_COLS.includes(k))];
+
+      for (const key of ordered) {
+        const f = fields[key] || {};
+        const val = f.value ?? '';
+        const conf = f.confidence;
+        const isStudentCol = STUDENT_COLS.includes(key);
+
+        const row = document.createElement('div');
+        row.className = 'field-row';
+        row.innerHTML = `
+          <div class="field-key">${key}${isStudentCol ? ' <span style="color:#a78bfa;font-size:0.65rem;">★ students</span>' : ''}</div>
+          <input class="field-val" id="field-${key}" type="text" value="${escHtml(String(val))}" />
+          <div class="conf-badge ${confClass(conf)}">${confLabel(conf)}</div>
+        `;
+        area.appendChild(row);
+      }
+
+      document.getElementById('model-tag').textContent = `Model: ${data.model_used || 'unknown'}`;
+      document.getElementById('raw-json').textContent = JSON.stringify(fields, null, 2);
+      document.getElementById('draft-box').style.display = 'block';
+    }
+
+    async function doCommit() {
+      const url = document.getElementById('svc-url').value.trim();
+      const status = document.getElementById('commit-status');
+      const btn = document.getElementById('commit-btn');
+      const resultBox = document.getElementById('commit-result');
+
+      if (!currentFormId) {
+        status.textContent = 'No extracted form — run Extract first.';
+        status.className = 'status error';
+        return;
+      }
+
+      // Collect only student-eligible fields that have a value
+      const payload = { form_id: currentFormId };
+      for (const key of STUDENT_COLS) {
+        const el = document.getElementById(`field-${key}`);
+        if (el && el.value.trim()) payload[key] = el.value.trim();
+      }
+      const sid = document.getElementById('student-id-input').value.trim();
+      if (sid) payload.student_id = sid;
+
+      btn.disabled = true;
+      status.textContent = 'Committing…';
+      status.className = 'status';
+      resultBox.style.display = 'none';
+
+      try {
+        const resp = await fetch(`${url}/documents/commit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || resp.statusText);
+
+        status.textContent = 'Committed successfully.';
+        status.className = 'status ok';
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = `
+          <strong>student_id:</strong> ${data.student_id}<br/>
+          <strong>form_id:</strong> ${data.form_id}<br/>
+          <strong>reviewed_at:</strong> ${data.reviewed_at}
+        `;
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'status error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+  </script>
+</body>
+</html>

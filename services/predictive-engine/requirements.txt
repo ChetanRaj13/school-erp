@@ -1,4 +1,8 @@
 fastapi
 uvicorn
-pandas
+pydantic
+supabase
+python-dotenv
+httpx
+scikit-learn
 numpy

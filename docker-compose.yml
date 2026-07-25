@@ -1,0 +1,48 @@
+# docker-compose.yml — place at repo root
+# NOT tested — no Docker access in this environment. Run `docker compose up --build`
+# and fix whatever surfaces. Port numbers here match the Dockerfiles in this batch;
+# if you change a port in a Dockerfile, update it here too.
+#
+# Flutter app is NOT included here — it builds to static web files (`flutter build
+# web`) or native binaries, not a long-running container like these four. Serve the
+# web build via any static host (Firebase Hosting, Netlify, nginx, etc.) separately.
+
+services:
+  timetable-solver:
+    build:
+      context: ./services/timetable-solver
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./services/timetable-solver/.env
+
+  predictive-engine:
+    build:
+      context: ./services/predictive-engine
+    ports:
+      - "8004:8004"
+    env_file:
+      - ./services/predictive-engine/.env
+    depends_on:
+      - timetable-solver
+    environment:
+      # Overrides the .env value so the container reaches timetable-solver by its
+      # Docker Compose service name, not localhost — localhost inside a container
+      # refers to the container itself, not the host or sibling containers.
+      TIMETABLE_SOLVER_URL: http://timetable-solver:8003
+
+  document-extraction:
+    build:
+      context: ./services/document-extraction
+    ports:
+      - "8003:8003"  # TODO: FIX — collides with timetable-solver, see that Dockerfile's port note. Change to 8005 here AND in document-extraction.Dockerfile once confirmed.
+    env_file:
+      - ./services/document-extraction/.env
+
+  omr-pipeline:
+    build:
+      context: ./services/omr-pipeline
+    ports:
+      - "8006:8006"
+    env_file:
+      - ./services/omr-pipeline/.env

@@ -2,3 +2,6 @@ fastapi
 uvicorn
 httpx
 pydantic
+python-dotenv
+supabase
+python-multipart

@@ -1,4 +1,7 @@
 fastapi
 uvicorn
-ortools
 pydantic
+ortools
+supabase
+python-dotenv
+python-multipart

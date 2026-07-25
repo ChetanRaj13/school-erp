@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Predictive Resource Allocation — Test Harness</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: rgba(255,255,255,0.04);
+    --panel-border: rgba(255,255,255,0.08);
+    --text: #e6e8ec;
+    --muted: #8a90a2;
+    --accent: #7c9cff;
+    --critical: #ff6b6b;
+    --watch: #ffb84d;
+    --ok: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top left, #12151c, #05060a 70%);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 32px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(12px);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; font-weight: 600; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input {
+    background: #12151c;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    width: 220px;
+  }
+  button {
+    margin-top: 14px;
+    background: var(--accent);
+    border: none;
+    color: #0b0d12;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { opacity: 0.9; }
+  .status { margin-top: 10px; font-size: 12px; }
+  .status.ok { color: var(--ok); }
+  .status.error { color: var(--critical); }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--panel-border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.low { background: rgba(255,255,255,0.08); color: var(--muted); }
+  .badge.medium { background: rgba(255,184,77,0.15); color: var(--watch); }
+  .badge.high { background: rgba(74,222,128,0.15); color: var(--ok); }
+  .badge.critical { background: rgba(255,107,107,0.15); color: var(--critical); }
+  .badge.watch { background: rgba(255,184,77,0.15); color: var(--watch); }
+  .reason { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Predictive Resource Allocation</h1>
+<div class="subtitle">Throwaway test harness — not part of the Flutter app. Advisory only, writes nothing.</div>
+
+<div class="panel">
+  <h2>Absence Risk Forecast</h2>
+  <label>Target date</label>
+  <input type="date" id="risk-date">
+  <label>Lookback weeks</label>
+  <input type="number" id="risk-lookback" value="12">
+  <br>
+  <button onclick="runRiskForecast()">Run Forecast</button>
+  <div id="risk-status" class="status"></div>
+  <table id="risk-table" style="display:none">
+    <thead><tr><th>Teacher ID</th><th>Risk</th><th>Confidence</th><th>Reason</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Resource Gap Check</h2>
+  <label>Target date</label>
+  <input type="date" id="gap-date">
+  <label>Lookback weeks</label>
+  <input type="number" id="gap-lookback" value="12">
+  <label>Risk threshold</label>
+  <input type="number" id="gap-threshold" value="0.15" step="0.01">
+  <br>
+  <button onclick="runGapCheck()">Check Resource Gaps</button>
+  <div id="gap-status" class="status"></div>
+  <table id="gap-table" style="display:none">
+    <thead><tr><th>Severity</th><th>Teacher ID</th><th>Slot</th><th>Class</th><th>Backup?</th><th>Note</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+  const BASE = "http://localhost:8004";
+
+  async function runRiskForecast() {
+    const status = document.getElementById("risk-status");
+    const table = document.getElementById("risk-table");
+    const tbody = table.querySelector("tbody");
+    status.textContent = "Running...";
+    status.className = "status";
+    try {
+      const res = await fetch(`${BASE}/predict/absence-risk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_date: document.getElementById("risk-date").value,
+          lookback_weeks: Number(document.getElementById("risk-lookback").value),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Request failed");
+
+      tbody.innerHTML = "";
+      data.risk_scores.forEach(r => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.teacher_id}</td>
+          <td>${(r.risk_score * 100).toFixed(1)}%</td>
+          <td><span class="badge ${r.confidence}">${r.confidence}</span></td>
+          <td class="reason">${r.reason}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      table.style.display = "table";
+      status.textContent = `✓ ${data.risk_scores.length} teachers scored for ${data.target_date}`;
+      status.className = "status ok";
+    } catch (err) {
+      status.textContent = `Error: ${err.message}`;
+      status.className = "status error";
+    }
+  }
+
+  async function runGapCheck() {
+    const status = document.getElementById("gap-status");
+    const table = document.getElementById("gap-table");
+    const tbody = table.querySelector("tbody");
+    status.textContent = "Running...";
+    status.className = "status";
+    try {
+      const res = await fetch(`${BASE}/predict/resource-gaps`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_date: document.getElementById("gap-date").value,
+          lookback_weeks: Number(document.getElementById("gap-lookback").value),
+          risk_threshold: Number(document.getElementById("gap-threshold").value),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Request failed");
+
+      tbody.innerHTML = "";
+      data.gaps.forEach(g => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><span class="badge ${g.severity}">${g.severity}</span></td>
+          <td>${g.teacher_id}</td>
+          <td>${g.slot_id}</td>
+          <td>${g.class_id}</td>
+          <td>${g.qualified_backup_available ? "Yes" : "No"}</td>
+          <td class="reason">${g.note}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      table.style.display = "table";
+      status.textContent = `✓ ${data.gaps_found} gaps found (${data.critical_count} critical) for ${data.target_date}`;
+      status.className = "status ok";
+    } catch (err) {
+      status.textContent = `Error: ${err.message}`;
+      status.className = "status error";
+    }
+  }
+</script>
+
+</body>
+</html>

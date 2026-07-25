@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timetable Solver Test Harness</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    h1 { font-size: 1.6rem; font-weight: 700; color: #a78bfa; margin-bottom: 0.25rem; }
+    .subtitle { color: #64748b; font-size: 0.875rem; margin-bottom: 2rem; }
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.35rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    input[type="text"] {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: #a78bfa; }
+    button {
+      margin-top: 1.5rem;
+      width: 100%;
+      padding: 0.75rem;
+      background: linear-gradient(135deg, #7c3aed, #a78bfa);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:hover { opacity: 0.9; }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.commit { background: linear-gradient(135deg, #059669, #34d399); }
+    .status { margin-top: 1rem; font-size: 0.85rem; color: #64748b; min-height: 1.2em; }
+    .status.error { color: #f87171; }
+    .status.ok { color: #34d399; }
+    #result-box { display: none; margin-top: 1.5rem; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .stat {
+      background: #0f1117;
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat .number { font-size: 2rem; font-weight: 800; color: #a78bfa; }
+    .stat .label { font-size: 0.75rem; color: #64748b; margin-top: 0.2rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin-top: 0.75rem;
+    }
+    th {
+      text-align: left;
+      padding: 0.5rem 0.6rem;
+      background: #0f1117;
+      color: #64748b;
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    td { padding: 0.45rem 0.6rem; border-top: 1px solid #2d3148; vertical-align: top; }
+    td.slot-head { color: #94a3b8; font-weight: 600; background: #0f1117; }
+    .cell-subj { font-weight: 600; color: #e2e8f0; }
+    .cell-meta { font-size: 0.72rem; color: #64748b; }
+    .cell-empty { color: #334155; }
+    .section-title {
+      font-size: 0.8rem;
+      color: #64748b;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 1.25rem 0 0.5rem;
+    }
+    .class-title { font-size: 1rem; font-weight: 700; color: #a78bfa; margin: 1.5rem 0 0.25rem; }
+    .conflict-list { list-style: none; }
+    .conflict-list li {
+      background: rgba(248, 113, 113, 0.08);
+      border-left: 3px solid #f87171;
+      padding: 0.6rem 0.85rem;
+      border-radius: 4px;
+      margin-bottom: 0.5rem;
+      color: #fca5a5;
+      font-size: 0.85rem;
+    }
+    .raw-json {
+      background: #0f1117;
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.72rem;
+      color: #64748b;
+      overflow: auto;
+      white-space: pre;
+      margin-top: 1rem;
+      max-height: 280px;
+    }
+    /* ── Substitute panel ─────────────────────────────────────── */
+    .sub-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.75rem;
+      align-items: center;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 0.75rem 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+    .sub-row.qualified { border-left: 3px solid #34d399; }
+    .sub-row.unqualified { border-left: 3px solid #475569; }
+    .sub-rank { font-weight: 800; color: #a78bfa; font-size: 1.1rem; min-width: 1.5rem; }
+    .sub-name { font-weight: 600; color: #e2e8f0; }
+    .sub-name .badge { font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 0.4rem; vertical-align: middle; }
+    .badge.yes { background: rgba(52,211,153,0.15); color: #34d399; }
+    .badge.no { background: rgba(100,116,139,0.2); color: #94a3b8; }
+    .sub-reason { font-size: 0.78rem; color: #94a3b8; margin-top: 0.2rem; }
+    .sub-meta { font-size: 0.72rem; color: #64748b; text-align: right; white-space: nowrap; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .covered-banner { background: rgba(251,191,36,0.1); border: 1px solid #fbbf24; color: #fbbf24; border-radius: 8px; padding: 0.7rem 0.9rem; font-size: 0.85rem; margin-bottom: 0.75rem; }
+    .empty-note { color: #64748b; font-size: 0.85rem; font-style: italic; padding: 0.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>🗓️ Timetable Solver Test Harness</h1>
+  <p class="subtitle">Standalone tester for /generate + /commit — not part of the production Flutter app</p>
+
+  <div class="card">
+    <label for="base-url">Service Base URL</label>
+    <input type="text" id="base-url" value="http://localhost:8003" />
+    <button id="gen-btn" onclick="runGenerate()">Generate Timetable →</button>
+    <div class="status" id="status-msg"></div>
+  </div>
+
+  <div id="result-box" class="card">
+    <div class="summary-grid">
+      <div class="stat"><div class="number" id="s-total">—</div><div class="label">Total Assignments</div></div>
+      <div class="stat"><div class="number" id="s-classes">—</div><div class="label">Classes</div></div>
+      <div class="stat"><div class="number" id="s-status">—</div><div class="label">Status</div></div>
+    </div>
+
+    <div id="grids"></div>
+
+    <button class="commit" id="commit-btn" onclick="runCommit()">Commit to scheduling.timetable →</button>
+    <div class="status" id="commit-msg"></div>
+
+    <div class="section-title">Raw JSON Response</div>
+    <div class="raw-json" id="raw-json"></div>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:1.25rem;">🧑‍🏫 Substitute Recommendation</h1>
+    <p class="subtitle" style="margin-bottom:1.25rem;">Find a free teacher to cover an absent teacher's slot — read-only, human picks who to commit.</p>
+
+    <div class="grid-2">
+      <div>
+        <label for="sub-teacher">Absent Teacher ID</label>
+        <input type="text" id="sub-teacher" value="22222222-2222-2222-2222-222222222223" />
+      </div>
+      <div>
+        <label for="sub-date">Date (YYYY-MM-DD)</label>
+        <input type="text" id="sub-date" value="2026-07-27" />
+      </div>
+    </div>
+    <div style="margin-top:0.75rem;">
+      <label for="sub-slot">Slot ID (1–30, Mon P1=1 … Fri P6=30)</label>
+      <input type="text" id="sub-slot" value="2" />
+    </div>
+
+    <button id="rec-btn" onclick="runRecommend()">Recommend Substitutes →</button>
+    <div class="status" id="rec-msg"></div>
+
+    <div id="sub-result" style="display:none;">
+      <div class="section-title">Slot to cover</div>
+      <div id="sub-context" class="sub-meta" style="text-align:left;"></div>
+
+      <div class="section-title" style="margin-top:1rem;">Ranked Candidates</div>
+      <div id="sub-candidates"></div>
+
+      <div class="section-title" style="margin-top:1rem;">Raw JSON Response</div>
+      <div class="raw-json" id="sub-raw-json"></div>
+    </div>
+  </div>
+
+  <script>
+    const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    let lastResult = null; // holds the /generate payload for committing
+
+    async function runGenerate() {
+      const btn = document.getElementById('gen-btn');
+      const statusEl = document.getElementById('status-msg');
+      const base = document.getElementById('base-url').value.trim().replace(/\/$/, '');
+
+      statusEl.className = 'status';
+      document.getElementById('commit-msg').textContent = '';
+      document.getElementById('result-box').style.display = 'none';
+      btn.disabled = true;
+      statusEl.textContent = 'Solving… OR-Tools CP-SAT (up to ~30s).';
+
+      try {
+        const res = await fetch(base + '/generate', { method: 'POST' });
+        const data = await res.json();
+        document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+
+        if (!res.ok) {
+          // 422 infeasible → detail carries {status, conflicts}
+          const detail = data.detail || data;
+          renderInfeasible(detail);
+          statusEl.textContent = `Infeasible (HTTP ${res.status}) — see conflicts below.`;
+          statusEl.className = 'status error';
+          document.getElementById('result-box').style.display = 'block';
+          return;
+        }
+
+        lastResult = data;
+        renderTimetable(data);
+        statusEl.textContent = `✓ Generated ${data.summary.total_assignments} assignments — review, then commit.`;
+        statusEl.className = 'status ok';
+        document.getElementById('result-box').style.display = 'block';
+      } catch (err) {
+        statusEl.textContent = `Network error: ${err.message}. Is the server running at ${base}?`;
+        statusEl.className = 'status error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderInfeasible(detail) {
+      lastResult = null;
+      document.getElementById('s-total').textContent = '0';
+      document.getElementById('s-classes').textContent = '0';
+      document.getElementById('s-status').textContent = 'infeasible';
+      document.getElementById('s-status').style.color = '#f87171';
+      document.getElementById('commit-btn').style.display = 'none';
+      const conflicts = (detail && detail.conflicts) || ['Unknown infeasibility.'];
+      document.getElementById('grids').innerHTML =
+        '<div class="section-title">Why no timetable was found</div>' +
+        '<ul class="conflict-list">' +
+        conflicts.map(c => `<li>${escapeHtml(c)}</li>`).join('') +
+        '</ul>';
+    }
+
+    function renderTimetable(data) {
+      document.getElementById('commit-btn').style.display = 'block';
+      document.getElementById('s-total').textContent = data.summary.total_assignments;
+      document.getElementById('s-classes').textContent = Object.keys(data.summary.per_class).length;
+      document.getElementById('s-status').textContent = data.status;
+      document.getElementById('s-status').style.color = '#34d399';
+
+      // Group rows by class
+      const byClass = {};
+      const daysSeen = new Set();
+      let maxPeriod = 0;
+      for (const r of data.timetable) {
+        (byClass[r.class_name] ||= []).push(r);
+        daysSeen.add(r.day);
+        if (r.period > maxPeriod) maxPeriod = r.period;
+      }
+      const days = DAY_ORDER.filter(d => daysSeen.has(d));
+
+      const container = document.getElementById('grids');
+      container.innerHTML = '';
+
+      for (const className of Object.keys(byClass).sort()) {
+        const rows = byClass[className];
+        // index by day+period
+        const grid = {};
+        for (const r of rows) grid[`${r.day}-${r.period}`] = r;
+
+        const title = document.createElement('div');
+        title.className = 'class-title';
+        title.textContent = `Class ${className} — ${rows.length} periods/week`;
+        container.appendChild(title);
+
+        const table = document.createElement('table');
+        let html = '<thead><tr><th>Period</th>' +
+          days.map(d => `<th>${d.toUpperCase()}</th>`).join('') + '</tr></thead><tbody>';
+        for (let p = 1; p <= maxPeriod; p++) {
+          html += `<tr><td class="slot-head">P${p}</td>`;
+          for (const d of days) {
+            const r = grid[`${d}-${p}`];
+            if (r) {
+              html += `<td><div class="cell-subj">${escapeHtml(r.subject)}</div>` +
+                `<div class="cell-meta">${escapeHtml(r.teacher_name || '')}` +
+                `${r.room_name ? ' · ' + escapeHtml(r.room_name) : ''}</div></td>`;
+            } else {
+              html += '<td class="cell-empty">—</td>';
+            }
+          }
+          html += '</tr>';
+        }
+        html += '</tbody>';
+        table.innerHTML = html;
+        container.appendChild(table);
+      }
+    }
+
+    async function runCommit() {
+      if (!lastResult || !lastResult.timetable) return;
+      const btn = document.getElementById('commit-btn');
+      const msg = document.getElementById('commit-msg');
+      const base = document.getElementById('base-url').value.trim().replace(/\/$/, '');
+
+      if (!confirm(`Commit ${lastResult.timetable.length} assignments to scheduling.timetable? (insert-only)`)) return;
+
+      btn.disabled = true;
+      msg.className = 'status';
+      msg.textContent = 'Committing…';
+      try {
+        const res = await fetch(base + '/commit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timetable: lastResult.timetable }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = `Error ${res.status}: ${data.detail || JSON.stringify(data)}`;
+          msg.className = 'status error';
+          return;
+        }
+        msg.textContent = `✓ Committed ${data.committed} row(s) into scheduling.timetable.`;
+        msg.className = 'status ok';
+      } catch (err) {
+        msg.textContent = `Network error: ${err.message}`;
+        msg.className = 'status error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // ── Substitute recommendation ────────────────────────────────
+    let lastRecommend = null;
+
+    async function runRecommend() {
+      const btn = document.getElementById('rec-btn');
+      const msg = document.getElementById('rec-msg');
+      const base = document.getElementById('base-url').value.trim().replace(/\/$/, '');
+      const teacher_id = document.getElementById('sub-teacher').value.trim();
+      const date = document.getElementById('sub-date').value.trim();
+      const slot_id = parseInt(document.getElementById('sub-slot').value.trim(), 10);
+
+      msg.className = 'status';
+      document.getElementById('sub-result').style.display = 'none';
+      btn.disabled = true;
+      msg.textContent = 'Ranking candidates…';
+
+      try {
+        const res = await fetch(base + '/substitutes/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teacher_id, date, slot_id }),
+        });
+        const data = await res.json();
+        document.getElementById('sub-raw-json').textContent = JSON.stringify(data, null, 2);
+
+        if (!res.ok) {
+          msg.textContent = `Error ${res.status}: ${data.detail || JSON.stringify(data)}`;
+          msg.className = 'status error';
+          document.getElementById('sub-result').style.display = 'block';
+          return;
+        }
+
+        lastRecommend = data;
+        renderRecommend(data);
+        msg.textContent = `✓ ${data.candidate_count} candidate(s) for ${data.subject_name} (${data.class_name}).`;
+        msg.className = 'status ok';
+        document.getElementById('sub-result').style.display = 'block';
+      } catch (err) {
+        msg.textContent = `Network error: ${err.message}. Is the server running at ${base}?`;
+        msg.className = 'status error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderRecommend(data) {
+      const s = data.slot || {};
+      document.getElementById('sub-context').innerHTML =
+        `<strong>${escapeHtml(data.absent_teacher_name)}</strong> absent on ` +
+        `<strong>${escapeHtml(data.date)}</strong> · ${escapeHtml((s.day||'').toUpperCase())} ` +
+        `P${s.period_number} (${s.start_time}–${s.end_time}) · covering ` +
+        `<strong>${escapeHtml(data.subject_name)}</strong> for class <strong>${escapeHtml(data.class_name)}</strong>.`;
+
+      const box = document.getElementById('sub-candidates');
+
+      if (data.already_covered) {
+        box.innerHTML = '<div class="covered-banner">⚠ This absence is already covered by a committed substitution — no candidates shown.</div>';
+        if (!data.candidates.length) return;
+      }
+
+      if (!data.candidates.length) {
+        box.innerHTML = '<div class="empty-note">No free teachers available for this slot. Every other staff member is either teaching or already covering another substitution.</div>';
+        return;
+      }
+
+      box.innerHTML = data.candidates.map(c => {
+        const cls = c.qualified ? 'qualified' : 'unqualified';
+        const badge = c.qualified
+          ? '<span class="badge yes">QUALIFIED</span>'
+          : '<span class="badge no">not qualified</span>';
+        return `<div class="sub-row ${cls}">
+          <div class="sub-rank">#${c.rank}</div>
+          <div>
+            <div class="sub-name">${escapeHtml(c.teacher_name)} ${badge}</div>
+            <div class="sub-reason">${escapeHtml(c.reason)}</div>
+          </div>
+          <div class="sub-meta">
+            <button class="commit" style="margin:0;width:auto;padding:0.45rem 0.8rem;font-size:0.8rem;"
+              onclick="commitSubstitute('${escapeHtml(c.teacher_id)}')">Commit</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    async function commitSubstitute(substitute_teacher_id) {
+      if (!lastRecommend) return;
+      const base = document.getElementById('base-url').value.trim().replace(/\/$/, '');
+      const msg = document.getElementById('rec-msg');
+
+      if (!confirm(`Commit ${substitute_teacher_id} as the confirmed substitute for ${lastRecommend.absent_teacher_name}'s ${lastRecommend.subject_name} slot?`)) return;
+
+      msg.className = 'status';
+      msg.textContent = 'Committing substitution…';
+      try {
+        const res = await fetch(base + '/substitutes/commit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            original_teacher_id: lastRecommend.absent_teacher_id,
+            substitute_teacher_id,
+            date: lastRecommend.date,
+            slot_id: lastRecommend.slot_id,
+            class_id: lastRecommend.class_id,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = `Error ${res.status}: ${data.detail || JSON.stringify(data)}`;
+          msg.className = 'status error';
+          return;
+        }
+        const sub = data.substitution || {};
+        msg.textContent = `✓ Committed substitution ${sub.id || ''} (status=${sub.status}) into scheduling.substitutions.`;
+        msg.className = 'status ok';
+      } catch (err) {
+        msg.textContent = `Network error: ${err.message}`;
+        msg.className = 'status error';
+      }
+    }
+  </script>
+</body>
+</html>

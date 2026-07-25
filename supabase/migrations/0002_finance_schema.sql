@@ -1,0 +1,1 @@
+-- 0002_finance_schema.stale: removed due to drift with live DB. Finance schema applied separately.
