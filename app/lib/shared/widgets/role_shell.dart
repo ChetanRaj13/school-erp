@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/admin_workspace_provider.dart';
 import '../../core/auth/auth_providers.dart';
 import '../../core/auth/user_role.dart';
 import '../../core/router/nav_config.dart';
@@ -146,11 +147,67 @@ class _Sidebar extends ConsumerWidget {
   final ValueChanged<String> onSelected;
   final bool asDrawerList;
 
+  /// Filters sections for admin workspace: HR shows HR-only items, Finance
+  /// shows Finance-only items. Operations is always included. The Overview
+  /// section (first section, no header) is replaced with the workspace-
+  /// specific overview route.
+  List<NavSection> _adminSections(AdminWorkspace ws) {
+    final sections = <NavSection>[];
+    for (final section in nav.sections) {
+      // Skip the headerless Overview section — we replace it below.
+      if (section.header == null) continue;
+
+      if (section.header == 'Operations') {
+        // Operations always visible in both workspaces.
+        sections.add(section);
+        continue;
+      }
+
+      if (section.header == 'HR' || section.header == 'Finance') {
+        // Include the workspace-specific section.
+        if ((ws == AdminWorkspace.hr && section.header == 'HR') ||
+            (ws == AdminWorkspace.finance && section.header == 'Finance')) {
+          sections.add(section);
+        }
+        continue;
+      }
+
+      // Communication / other sections: always visible.
+      sections.add(section);
+    }
+
+    // Prepend the workspace-specific overview.
+    final overviewDest = ws == AdminWorkspace.hr
+        ? const NavDestination(
+            icon: Icons.space_dashboard_outlined,
+            label: 'HR Overview',
+            route: '/admin/hr-overview',
+          )
+        : const NavDestination(
+            icon: Icons.space_dashboard_outlined,
+            label: 'Finance Overview',
+            route: '/admin/finance-overview',
+          );
+    sections.insert(0, NavSection(destinations: [overviewDest]));
+
+    return sections;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // For admin role, filter sections by workspace; otherwise use all sections.
+    final effectiveSections = role == UserRole.admin
+        ? _adminSections(ref.watch(adminWorkspaceProvider))
+        : nav.sections;
+
     final items = <Widget>[];
 
-    for (final section in nav.sections) {
+    // Admin workspace toggle (only in sidebar, not drawer list — drawer gets it too).
+    if (role == UserRole.admin && !asDrawerList) {
+      items.add(_WorkspaceToggle());
+    }
+
+    for (final section in effectiveSections) {
       if (section.header != null) {
         items.add(Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
@@ -177,6 +234,13 @@ class _Sidebar extends ConsumerWidget {
     }
 
     if (asDrawerList) {
+      // Build drawer items with workspace toggle for admin.
+      final drawerItems = <Widget>[];
+      if (role == UserRole.admin) {
+        drawerItems.add(_WorkspaceToggle());
+      }
+      drawerItems.addAll(items);
+
       return ListView(
         padding: EdgeInsets.zero,
         children: [
@@ -196,7 +260,7 @@ class _Sidebar extends ConsumerWidget {
               ],
             ),
           ),
-          ...items,
+          ...drawerItems,
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout_rounded, color: AppColors.error),
@@ -332,6 +396,43 @@ class _NavTile extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Admin-only workspace toggle: HR / Finance. Rendered at the top of the admin
+/// sidebar to switch between the two workspaces.
+class _WorkspaceToggle extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(adminWorkspaceProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: SegmentedButton<AdminWorkspace>(
+        segments: const [
+          ButtonSegment(
+            value: AdminWorkspace.hr,
+            icon: Icon(Icons.groups_outlined, size: 18),
+            label: Text('HR', style: TextStyle(fontSize: 13)),
+          ),
+          ButtonSegment(
+            value: AdminWorkspace.finance,
+            icon: Icon(Icons.account_balance_outlined, size: 18),
+            label: Text('Finance', style: TextStyle(fontSize: 13)),
+          ),
+        ],
+        selected: {current},
+        onSelectionChanged: (sel) {
+          ref.read(adminWorkspaceProvider.notifier).setWorkspace(sel.first);
+        },
+        style: SegmentedButton.styleFrom(
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          selectedBackgroundColor: AppColors.primaryLight.withValues(alpha: 0.28),
+          selectedForegroundColor: AppColors.primary,
+          foregroundColor: AppColors.textSecondary,
+          visualDensity: VisualDensity.compact,
         ),
       ),
     );

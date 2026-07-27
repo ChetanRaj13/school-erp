@@ -18,5 +18,8 @@ class Env {
   static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   static const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
+  /// Razorpay Test Mode public key — injected via --dart-define, never hardcoded.
+  static const razorpayKeyId = String.fromEnvironment('RAZORPAY_KEY_ID');
+
   static bool get isConfigured => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 }

@@ -34,7 +34,7 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
     final requests = await client
         .schema('finance')
         .from('waiver_requests')
-        .select('id, student_id, request_type, requested_amount, reason, status, created_at')
+        .select('id, student_id, request_type, requested_amount, reason, status, created_at, disbursed_at, invoice_id')
         .order('created_at', ascending: false);
     final studentIds = (requests as List).map((r) => r['student_id']).toSet().toList();
     final students = studentIds.isEmpty
@@ -71,6 +71,49 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
         'approved_by': selfStaffId,
       }).eq('id', requestId);
       _refresh(approve ? 'Approved.' : 'Rejected.');
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  /// Disburse an approved waiver: reduce the linked invoice's amount_due by the
+  /// requested_amount, then mark disbursed_at = now(). Only callable when
+  /// status='approved' AND disbursed_at IS NULL.
+  Future<void> _disburse(Map<String, dynamic> request) async {
+    final client = ref.read(supabaseClientProvider);
+    try {
+      final invoiceId = request['invoice_id'] as String?;
+      final requestedAmount = (request['requested_amount'] as num).toDouble();
+
+      if (invoiceId != null) {
+        // Fetch current amount_due from the linked invoice.
+        final invoice = await client
+            .schema('finance')
+            .from('invoices')
+            .select('id, amount_due')
+            .eq('id', invoiceId)
+            .maybeSingle();
+
+        if (invoice == null) {
+          _showError('Linked invoice not found.');
+          return;
+        }
+
+        final currentDue = (invoice['amount_due'] as num).toDouble();
+        final newDue = (currentDue - requestedAmount).clamp(0, double.infinity);
+
+        // Reduce amount_due by the waiver amount.
+        await client.schema('finance').from('invoices').update({
+          'amount_due': newDue,
+        }).eq('id', invoiceId);
+      }
+
+      // Mark as disbursed.
+      await client.schema('finance').from('waiver_requests').update({
+        'disbursed_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', request['id'] as String);
+
+      _refresh('Waiver disbursed successfully.');
     } catch (e) {
       _showError(e);
     }
@@ -240,6 +283,30 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
                                           const SizedBox(width: 10),
                                           Expanded(child: ElevatedButton(onPressed: () => _decide(r['id'] as String, true), child: const Text('Approve'))),
                                         ],
+                                      ),
+                                    ],
+                                    // Disburse button: approved but not yet disbursed.
+                                    if (canDecide && status == 'approved' && r['disbursed_at'] == null) ...[
+                                      const SizedBox(height: 10),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton.icon(
+                                          onPressed: () => _disburse(r),
+                                          icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                                          label: const Text('Disburse'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.success,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    // Already disbursed indicator.
+                                    if (status == 'approved' && r['disbursed_at'] != null) ...[
+                                      const SizedBox(height: 8),
+                                      GlassChip(
+                                        label: 'Disbursed',
+                                        icon: Icons.check_circle_outline,
+                                        color: AppColors.success,
                                       ),
                                     ],
                                   ],

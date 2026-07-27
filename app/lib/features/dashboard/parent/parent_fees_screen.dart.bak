@@ -1,0 +1,467 @@
+import 'package:flutter/foundation.dart' show kWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/auth/auth_providers.dart';
+import '../../../core/auth/self_children_provider.dart';
+import '../../../core/config/env.dart';
+import '../../../core/payments/razorpay_gateway.dart' as razorpay;
+import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/receipt_generator.dart';
+import '../../../shared/widgets/glass_card.dart';
+import '../../../shared/widgets/warm_backdrop.dart';
+
+/// Parent Fees — due amounts, due dates, real payment history, downloadable receipts,
+/// EMI self-request, and **real Razorpay Checkout** for online payment.
+///
+/// Flow: tap "Pay Online" → Edge Function creates Razorpay order → Razorpay Checkout
+/// opens → on success, a confirmation snackbar is shown and the screen reloads to pick
+/// up the webhook's payment record. The client-side success callback is NEVER treated as
+/// proof of payment — only the webhook (razorpay-webhook) writes to finance.payments.
+class ParentFeesScreen extends ConsumerStatefulWidget {
+  const ParentFeesScreen({super.key});
+
+  @override
+  ConsumerState<ParentFeesScreen> createState() => _ParentFeesScreenState();
+}
+
+class _ParentFeesScreenState extends ConsumerState<ParentFeesScreen> {
+  String? _selectedStudentId;
+  _FeesData? _data;
+  bool _loading = true;
+  String? _error;
+
+  // ── Data loading ──────────────────────────────────────────────────────
+
+  Future<void> _loadData() async {
+    final client = ref.read(supabaseClientProvider);
+    final childrenAsync = ref.read(selfChildrenProvider);
+    final children = childrenAsync.valueOrNull ?? [];
+    if (children.isEmpty) {
+      setState(() {
+        _data = _FeesData(unpaidInvoices: [], paymentHistory: []);
+        _loading = false;
+      });
+      return;
+    }
+    final selected = children.firstWhere(
+      (c) => c.studentId == _selectedStudentId,
+      orElse: () => children.first,
+    );
+    _selectedStudentId = selected.studentId;
+
+    try {
+      final data = await _loadFees(client, selected.studentId);
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<_FeesData> _loadFees(SupabaseClient client, String studentId) async {
+    final invoicesRaw = await client
+        .schema('finance')
+        .from('invoices')
+        .select('id, amount_due, amount_paid, due_date, invoice_number')
+        .eq('student_id', studentId)
+        .order('due_date');
+    final invoices = List<Map<String, dynamic>>.from(invoicesRaw as List);
+    final unpaid = invoices
+        .where((i) => (i['amount_due'] as num) > (i['amount_paid'] as num))
+        .toList();
+
+    final invoiceIds = invoices.map((i) => i['id']).toList();
+    final payments = invoiceIds.isEmpty
+        ? []
+        : await client
+            .schema('finance')
+            .from('payments')
+            .select('id, invoice_id, amount, method, status, created_at')
+            .inFilter('invoice_id', invoiceIds)
+            .order('created_at', ascending: false);
+
+    return _FeesData(
+      unpaidInvoices: unpaid,
+      paymentHistory: List<Map<String, dynamic>>.from(payments),
+    );
+  }
+
+  // ── Razorpay checkout ─────────────────────────────────────────────────
+
+  Future<void> _payOnline(Map<String, dynamic> invoice) async {
+    final remaining = (invoice['amount_due'] as num).toDouble() -
+        (invoice['amount_paid'] as num).toDouble();
+    if (remaining <= 0) return;
+
+    final client = ref.read(supabaseClientProvider);
+    final session = ref.read(currentSessionProvider);
+
+    // 1. Create order via Edge Function (amount in rupees — function converts to paise).
+    try {
+      final response = await client.functions.invoke(
+        'create-razorpay-order',
+        body: {
+          'invoice_id': invoice['id'],
+          'amount': remaining,
+        },
+      );
+
+      final body = response.data;
+      if (response.status != 200 || body == null || body['error'] != null) {
+        final msg = body?['error'] ?? 'Failed to create payment order (status ${response.status})';
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+        );
+        return;
+      }
+
+      final orderId = body['id'] as String;
+
+      #if WEB
+      // 2. Open Razorpay Checkout via JS SDK (web).
+      razorpay.openRazorpayCheckout(
+        key: Env.razorpayKeyId,
+        amount: (remaining * 100).toInt(), // paise
+        orderId: orderId,
+        name: 'School ERP — Fee Payment',
+        description: 'Fee payment for invoice ${invoice['invoice_number'] ?? ''}',
+        prefill: {
+          'email': session?.user.email ?? '',
+          'contact': session?.user.phone ?? '',
+        },
+        theme: {'color': '#6C63FF'},
+        onSuccess: (paymentId, orderIdResult, signature) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment submitted — confirming shortly.'),
+              backgroundColor: AppColors.success,
+              duration: Duration(seconds: 4),
+            ),
+          );
+          // Reload after a short delay to give the webhook time to land.
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) _loadData();
+          });
+        },
+        onError: (code, message) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Payment failed ($code): $message'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        },
+        onDismiss: () {
+          // User closed checkout — no action needed.
+        },
+      );
+      #else
+      // Mobile: Online payments not yet implemented. Show a helpful message.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Online payments are currently supported only on web. Please pay through the school office.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      #endif
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment error: $e'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  // ── Receipt download ──────────────────────────────────────────────────
+
+  Future<void> _downloadReceipt(Map<String, dynamic> payment, String studentName, String admissionNumber) async {
+    final client = ref.read(supabaseClientProvider);
+    try {
+      final url = await ReceiptGenerator.generateAndUpload(
+        client: client,
+        paymentId: payment['id'] as String,
+        studentName: studentName,
+        admissionNumber: admissionNumber,
+        amount: (payment['amount'] as num).toDouble(),
+        method: payment['method'] as String,
+        status: payment['status'] as String,
+        paidAt: DateTime.parse(payment['created_at'] as String),
+      );
+      await launchUrl(Uri.parse(url), webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  // ── EMI request ───────────────────────────────────────────────────────
+
+  void _showEmiRequestSheet(Map<String, dynamic> invoice, double remaining) {
+    int installments = 3;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.card)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Request Payment Plan', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 4),
+                Text('₹${remaining.toStringAsFixed(0)} remaining', style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  children: [3, 6, 12].map((n) {
+                    final sel = installments == n;
+                    return ChoiceChip(
+                      label: Text('$n months (₹${(remaining / n).toStringAsFixed(0)}/mo)'),
+                      selected: sel,
+                      onSelected: (_) => setModalState(() => installments = n),
+                      selectedColor: AppColors.primary,
+                      labelStyle: TextStyle(color: sel ? Colors.white : AppColors.textPrimary),
+                      backgroundColor: AppColors.glassFill,
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Your request goes to the school office for approval — this doesn\'t create an active plan immediately.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _submitEmiRequest(invoice, installments, remaining);
+                  },
+                  child: const Text('Submit request'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitEmiRequest(Map<String, dynamic> invoice, int installments, double remaining) async {
+    final client = ref.read(supabaseClientProvider);
+    try {
+      await client.schema('finance').from('payment_plans').insert({
+        'invoice_id': invoice['id'],
+        'total_installments': installments,
+        'installment_amount': remaining / installments,
+        'start_date': DateTime.now().toIso8601String().split('T').first,
+        'status': 'requested',
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request submitted — awaiting school approval.'), backgroundColor: AppColors.success),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error));
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final childrenAsync = ref.watch(selfChildrenProvider);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: WarmBackdrop(
+        child: SafeArea(
+          child: childrenAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+            error: (e, _) => Center(child: Text('Error: $e')),
+            data: (children) {
+              if (children.isEmpty) {
+                return const Center(child: Text('No children linked to your account yet.'));
+              }
+
+              final selected = children.firstWhere(
+                (c) => c.studentId == _selectedStudentId,
+                orElse: () => children.first,
+              );
+
+              // Trigger first load when children resolve and we haven't loaded yet.
+              if (_loading && _data == null) {
+                // Schedule post-frame to avoid setState-during-build.
+                WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+              }
+
+              return RefreshIndicator(
+                onRefresh: _loadData,
+                child: _loading && _data == null
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                    : _error != null && _data == null
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Failed to load: $_error'),
+                                const SizedBox(height: 12),
+                                ElevatedButton(onPressed: _loadData, child: const Text('Retry')),
+                              ],
+                            ),
+                          )
+                        : _buildContent(context, children, selected),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, List<LinkedChild> children, LinkedChild selected) {
+    final data = _data!;
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          sliver: SliverToBoxAdapter(
+            child: Row(
+              children: [
+                Expanded(child: Text('Fees — ${selected.fullName}', style: Theme.of(context).textTheme.headlineMedium)),
+                if (children.length > 1)
+                  IconButton(
+                    icon: const Icon(Icons.swap_horiz, color: AppColors.primary),
+                    tooltip: 'Switch child',
+                    onPressed: () {
+                      final idx = children.indexOf(selected);
+                      final next = children[(idx + 1) % children.length];
+                      setState(() {
+                        _selectedStudentId = next.studentId;
+                        _loading = true;
+                        _data = null;
+                      });
+                      _loadData();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.all(20),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              Text('Outstanding', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 10),
+              if (data.unpaidInvoices.isEmpty)
+                const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('Nothing due right now.'))
+              else
+                ...data.unpaidInvoices.map((inv) {
+                  final remaining = (inv['amount_due'] as num).toDouble() - (inv['amount_paid'] as num).toDouble();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: GlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('₹${remaining.toStringAsFixed(0)}', style: Theme.of(context).textTheme.headlineMedium),
+                              Text('due ${inv['due_date']}', style: Theme.of(context).textTheme.bodyMedium),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => _showEmiRequestSheet(inv, remaining),
+                                  child: const Text('Request EMI'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: () => _payOnline(inv),
+                                  child: const Text('Pay Online'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 24),
+              Text('Payment History', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 10),
+              if (data.paymentHistory.isEmpty)
+                const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('No payments recorded yet.'))
+              else
+                ...data.paymentHistory.map((p) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: GlassCard(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('₹${(p['amount'] as num).toStringAsFixed(0)} · ${p['method']}'),
+                                  Text('${p['created_at']}'.split('T').first, style: Theme.of(context).textTheme.bodySmall),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.receipt_long_outlined, color: AppColors.primary),
+                              tooltip: 'Download receipt',
+                              onPressed: () => _downloadReceipt(p, selected.fullName, selected.admissionNumber),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )),
+            ]),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FeesData {
+  _FeesData({required this.unpaidInvoices, required this.paymentHistory});
+  final List<Map<String, dynamic>> unpaidInvoices;
+  final List<Map<String, dynamic>> paymentHistory;
+}

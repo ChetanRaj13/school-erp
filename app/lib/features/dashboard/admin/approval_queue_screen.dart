@@ -20,7 +20,13 @@ import '../../../shared/widgets/warm_backdrop.dart';
 /// (that would need a drawing/signature-pad widget, a separate, smaller feature this
 /// doesn't attempt).
 class ApprovalQueueScreen extends ConsumerStatefulWidget {
-  const ApprovalQueueScreen({super.key});
+  /// When [filter] is:
+  /// - null (default): show all pending items (POs, vendor payments, payroll).
+  /// - 'hr': show only payroll items (HR workspace).
+  /// - 'finance': show only POs + vendor payments (Finance workspace).
+  const ApprovalQueueScreen({super.key, this.filter});
+
+  final String? filter;
 
   @override
   ConsumerState<ApprovalQueueScreen> createState() => _ApprovalQueueScreenState();
@@ -37,27 +43,46 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
 
   Future<_QueueData> _load() async {
     final client = ref.read(supabaseClientProvider);
+    final filter = widget.filter;
 
-    final pos = await client
-        .schema('finance')
-        .from('purchase_orders')
-        .select('id, description, amount, requested_by, created_at')
-        .eq('status', 'pending_approval')
-        .order('created_at');
+    // When filter is null, load everything. When 'hr', only payroll. When 'finance',
+    // only POs + vendor payments.
+    final loadPo = filter == null || filter == 'finance';
+    final loadVp = filter == null || filter == 'finance';
+    final loadPayroll = filter == null || filter == 'hr';
 
-    final vps = await client
-        .schema('finance')
-        .from('vendor_payments')
-        .select('id, amount, method, purchase_order_id, created_at')
-        .eq('status', 'pending_approval')
-        .order('created_at');
+    final futures = <Future<dynamic>>[];
+    final futuresMeta = <String>[];
 
-    final payroll = await client
-        .schema('finance')
-        .from('payroll_runs')
-        .select('id, employee_id, pay_period, gross_amount, net_amount, created_at')
-        .eq('status', 'pending_approval')
-        .order('created_at');
+    if (loadPo) {
+      futures.add(client
+          .schema('finance')
+          .from('purchase_orders')
+          .select('id, description, amount, requested_by, created_at')
+          .eq('status', 'pending_approval')
+          .order('created_at'));
+      futuresMeta.add('po');
+    }
+    if (loadVp) {
+      futures.add(client
+          .schema('finance')
+          .from('vendor_payments')
+          .select('id, amount, method, purchase_order_id, created_at')
+          .eq('status', 'pending_approval')
+          .order('created_at'));
+      futuresMeta.add('vp');
+    }
+    if (loadPayroll) {
+      futures.add(client
+          .schema('finance')
+          .from('payroll_runs')
+          .select('id, employee_id, pay_period, gross_amount, net_amount, created_at')
+          .eq('status', 'pending_approval')
+          .order('created_at'));
+      futuresMeta.add('payroll');
+    }
+
+    final results = await Future.wait(futures);
 
     // Resolve staff names for display — separate fetch + client-side join, same
     // deliberate choice as teacher_dashboard.dart (avoids fragile cross-schema
@@ -65,10 +90,26 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
     final staff = await client.schema('public').from('staff').select('id, full_name');
     final nameById = <String, String>{for (final s in staff as List) s['id'] as String: s['full_name'] as String};
 
+    List<Map<String, dynamic>> posList = [];
+    List<Map<String, dynamic>> vpList = [];
+    List<Map<String, dynamic>> payrollList = [];
+
+    for (var i = 0; i < results.length; i++) {
+      final items = List<Map<String, dynamic>>.from(results[i] as List);
+      switch (futuresMeta[i]) {
+        case 'po':
+          posList = items;
+        case 'vp':
+          vpList = items;
+        case 'payroll':
+          payrollList = items;
+      }
+    }
+
     return _QueueData(
-      purchaseOrders: List<Map<String, dynamic>>.from(pos as List),
-      vendorPayments: List<Map<String, dynamic>>.from(vps as List),
-      payrollRuns: List<Map<String, dynamic>>.from(payroll as List),
+      purchaseOrders: posList,
+      vendorPayments: vpList,
+      payrollRuns: payrollList,
       staffNameById: nameById,
     );
   }
@@ -129,6 +170,13 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
               final data = snapshot.data!;
               final totalPending = data.purchaseOrders.length + data.vendorPayments.length + data.payrollRuns.length;
 
+              // Title changes based on filter mode.
+              final title = widget.filter == 'hr'
+                  ? 'HR Approvals'
+                  : widget.filter == 'finance'
+                      ? 'Finance Approvals'
+                      : 'Approval Queue';
+
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
@@ -137,7 +185,7 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Approval Queue', style: Theme.of(context).textTheme.headlineMedium),
+                          Text(title, style: Theme.of(context).textTheme.headlineMedium),
                           GlassChip(label: '$totalPending pending', icon: Icons.pending_actions_outlined, color: AppColors.warning),
                         ],
                       ),

@@ -2,20 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
+import '../../../core/auth/self_record_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
-/// EMI/Financing — the feature file's named differentiator. Lists real unpaid
-/// invoices (finance.invoices where amount_due > amount_paid), lets an admin set up a
-/// payment plan splitting the remaining balance into installments
-/// (finance.payment_plans + finance.payment_plan_installments).
+/// EMI/Financing — lists unpaid invoices for admin-setup payment plans, PLUS
+/// a "Parent Requests" section showing plans submitted by parents (status =
+/// 'requested') with Approve/Reject, parallel to waiver approval.
 ///
 /// SCOPE: this creates the PLAN and its installment schedule — it does not (yet)
 /// automatically mark installments 'paid' when a real payment comes in, or send
-/// reminders. Those would need to hook into the existing Razorpay webhook flow
-/// (services with payment reconciliation) — flagged as a real follow-up, not silently
-/// implied to work end-to-end.
+/// reminders. Those would need to hook into the existing Razorpay webhook flow.
 class EmiFinancingScreen extends ConsumerStatefulWidget {
   const EmiFinancingScreen({super.key});
 
@@ -50,16 +48,66 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
         : await client.schema('public').from('students').select('id, full_name').inFilter('id', studentIds);
     final nameByStudentId = {for (final s in students) s['id'] as String: s['full_name'] as String};
 
+    // All plans, so we can separate requested vs active.
     final plans = await client
         .schema('finance')
         .from('payment_plans')
-        .select('id, invoice_id, total_installments, installment_amount, status')
+        .select('id, invoice_id, total_installments, installment_amount, status, created_at')
         .order('created_at', ascending: false);
+
+    // For requested plans, resolve the student name via invoice -> student_id.
+    final existingPlans = List<Map<String, dynamic>>.from(plans as List);
+    final requestedPlans = existingPlans.where((p) => p['status'] == 'requested').toList();
+
+    // Build student name map that includes names for requested-plan invoices.
+    final requestedInvoiceIds = requestedPlans.map((p) => p['invoice_id'] as String).toSet();
+    if (requestedInvoiceIds.isNotEmpty) {
+      final missingIds = requestedInvoiceIds.where((id) => !studentIds.contains(id)).toList();
+      if (missingIds.isNotEmpty) {
+        final extraInvoices = await client
+            .schema('finance')
+            .from('invoices')
+            .select('id, student_id')
+            .inFilter('id', missingIds);
+        for (final inv in extraInvoices as List) {
+          final sid = inv['student_id'] as String;
+          if (!nameByStudentId.containsKey(sid)) {
+            final s = await client
+                .schema('public')
+                .from('students')
+                .select('id, full_name')
+                .eq('id', sid)
+                .maybeSingle();
+            if (s != null) nameByStudentId[s['id'] as String] = s['full_name'] as String;
+          }
+        }
+      }
+    }
+
+    // Map invoice_id -> student_id for all invoices.
+    final invoiceStudentId = <String, String>{};
+    for (final inv in invoices) {
+      invoiceStudentId[inv['id'] as String] = inv['student_id'] as String;
+    }
+    // Also fetch student_id for requested-plan invoices not in the unpaid list.
+    for (final rid in requestedInvoiceIds) {
+      if (!invoiceStudentId.containsKey(rid)) {
+        final inv = await client
+            .schema('finance')
+            .from('invoices')
+            .select('id, student_id')
+            .eq('id', rid)
+            .maybeSingle();
+        if (inv != null) invoiceStudentId[inv['id'] as String] = inv['student_id'] as String;
+      }
+    }
 
     return _EmiData(
       unpaidInvoices: invoices,
       nameByStudentId: nameByStudentId,
-      existingPlans: List<Map<String, dynamic>>.from(plans as List),
+      existingPlans: existingPlans,
+      requestedPlans: requestedPlans,
+      invoiceStudentId: invoiceStudentId,
     );
   }
 
@@ -85,7 +133,6 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
 
       final planId = planResult['id'] as String;
 
-      // Generate the installment schedule — monthly, starting next month.
       final installments = List.generate(installmentCount, (i) {
         final dueDate = DateTime(startDate.year, startDate.month + i + 1, startDate.day);
         return {
@@ -103,6 +150,27 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
         SnackBar(
           content: Text('Payment plan created — $installmentCount installments of ₹${installmentAmount.toStringAsFixed(0)}'),
           backgroundColor: AppColors.success,
+        ),
+      );
+      setState(() { _future = _load(); });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error));
+    }
+  }
+
+  Future<void> _decidePlan(String planId, bool approve) async {
+    final selfStaffId = await ref.read(selfStaffIdProvider.future);
+    final client = ref.read(supabaseClientProvider);
+    try {
+      await client.schema('finance').from('payment_plans').update({
+        'status': approve ? 'active' : 'rejected',
+      }).eq('id', planId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(approve ? 'Plan approved.' : 'Plan rejected.'),
+          backgroundColor: approve ? AppColors.success : AppColors.error,
         ),
       );
       setState(() { _future = _load(); });
@@ -185,7 +253,10 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
                 return Center(child: Text('Failed to load: ${snapshot.error}'));
               }
               final data = snapshot.data!;
-              final invoiceIdsWithPlans = data.existingPlans.map((p) => p['invoice_id']).toSet();
+              final invoiceIdsWithPlans = data.existingPlans
+                  .where((p) => p['status'] == 'active')
+                  .map((p) => p['invoice_id'])
+                  .toSet();
 
               return CustomScrollView(
                 slivers: [
@@ -193,6 +264,87 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
                     sliver: SliverToBoxAdapter(
                       child: Text('EMI / Fee Financing', style: Theme.of(context).textTheme.headlineMedium),
+                    ),
+                  ),
+
+                  // ── Parent Requests ──
+                  if (data.requestedPlans.isNotEmpty) ...[
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                      sliver: SliverToBoxAdapter(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.help_outline, color: AppColors.warning, size: 20),
+                            const SizedBox(width: 8),
+                            Text('Parent Requests', style: Theme.of(context).textTheme.titleMedium),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate(
+                          data.requestedPlans.map((plan) {
+                            final invoiceId = plan['invoice_id'] as String;
+                            final studentId = data.invoiceStudentId[invoiceId];
+                            final studentName = studentId != null
+                                ? (data.nameByStudentId[studentId] ?? 'Unknown')
+                                : 'Unknown';
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: GlassCard(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(studentName, style: Theme.of(context).textTheme.titleMedium),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '₹${(plan['installment_amount'] as num?)?.toStringAsFixed(0) ?? '—'} '
+                                      '× ${plan['total_installments']} installments',
+                                      style: Theme.of(context).textTheme.bodyMedium,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: OutlinedButton.icon(
+                                            onPressed: () => _decidePlan(plan['id'] as String, false),
+                                            icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.error),
+                                            label: const Text('Reject', style: TextStyle(color: AppColors.error)),
+                                            style: OutlinedButton.styleFrom(
+                                              side: const BorderSide(color: AppColors.error),
+                                              shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(AppRadii.button)),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: ElevatedButton.icon(
+                                            onPressed: () => _decidePlan(plan['id'] as String, true),
+                                            icon: const Icon(Icons.check_rounded, size: 18),
+                                            label: const Text('Approve'),
+                                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  // ── Outstanding Invoices ──
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    sliver: SliverToBoxAdapter(
+                      child: Text('Outstanding Invoices', style: Theme.of(context).textTheme.titleMedium),
                     ),
                   ),
                   if (data.unpaidInvoices.isEmpty)
@@ -253,8 +405,17 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
 }
 
 class _EmiData {
-  _EmiData({required this.unpaidInvoices, required this.nameByStudentId, required this.existingPlans});
+  _EmiData({
+    required this.unpaidInvoices,
+    required this.nameByStudentId,
+    required this.existingPlans,
+    required this.requestedPlans,
+    required this.invoiceStudentId,
+  });
+
   final List<Map<String, dynamic>> unpaidInvoices;
   final Map<String, String> nameByStudentId;
   final List<Map<String, dynamic>> existingPlans;
+  final List<Map<String, dynamic>> requestedPlans;
+  final Map<String, String> invoiceStudentId;
 }

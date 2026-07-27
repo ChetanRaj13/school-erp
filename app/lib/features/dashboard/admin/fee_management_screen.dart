@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/receipt_generator.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
@@ -292,6 +294,74 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
     }
   }
 
+  /// Generate a GST invoice PDF for a specific invoice's first completed payment.
+  /// Uses ReceiptGenerator.generateGstInvoiceAndUpload (already built).
+  Future<void> _generateGstInvoice(BuildContext context, SupabaseClient client, Map<String, dynamic> invoice) async {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating GST invoice...')));
+    try {
+      // Find the first completed payment for this invoice.
+      final payments = await client
+          .schema('finance')
+          .from('payments')
+          .select('id, amount, method, status, created_at')
+          .eq('invoice_id', invoice['id'])
+          .eq('status', 'completed')
+          .order('created_at')
+          .limit(1);
+
+      if ((payments as List).isEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No completed payment found for this invoice.'), backgroundColor: AppColors.warning),
+        );
+        return;
+      }
+
+      // Fetch student details and fee structure info.
+      final student = await client
+          .schema('public')
+          .from('students')
+          .select('full_name, admission_number')
+          .eq('id', invoice['student_id'])
+          .maybeSingle();
+
+      // Find the fee structure name.
+      String feeStructureName = 'Fee';
+      if (invoice['fee_structure_id'] != null) {
+        final fs = await client
+            .schema('finance')
+            .from('fee_structures')
+            .select('name')
+            .eq('id', invoice['fee_structure_id'])
+            .maybeSingle();
+        if (fs != null) feeStructureName = fs['name'] as String;
+      }
+
+      final url = await ReceiptGenerator.generateGstInvoiceAndUpload(
+        client: client,
+        invoiceId: invoice['id'] as String,
+        invoiceNumber: (invoice['invoice_number'] as String?) ?? 'INV-UNKNOWN',
+        studentName: (student?['full_name'] as String?) ?? 'Unknown',
+        admissionNumber: (student?['admission_number'] as String?) ?? '—',
+        feeStructureName: feeStructureName,
+        baseAmount: (invoice['amount_due'] as num).toDouble(),
+        gstRate: (invoice['gst_rate'] as num?)?.toDouble() ?? 0,
+        issuedAt: DateTime.now(),
+      );
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      await launchUrl(Uri.parse(url), webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to generate GST invoice: $e'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -401,6 +471,11 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
                         ),
                       ),
                       TextButton(onPressed: () => _sendReminder(inv), child: const Text('Remind')),
+                      IconButton(
+                        icon: const Icon(Icons.receipt_long_outlined, size: 20, color: AppColors.primary),
+                        tooltip: 'Generate GST invoice',
+                        onPressed: () => _generateGstInvoice(context, ref.read(supabaseClientProvider), inv),
+                      ),
                     ],
                   ),
                 ),
@@ -433,6 +508,11 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
                   ),
                 ),
                 TextButton(onPressed: () => _sendReminder(inv), child: const Text('Remind')),
+                IconButton(
+                  icon: const Icon(Icons.receipt_long_outlined, size: 20, color: AppColors.primary),
+                  tooltip: 'Generate GST invoice',
+                  onPressed: () => _generateGstInvoice(context, ref.read(supabaseClientProvider), inv),
+                ),
               ],
             ),
           ),

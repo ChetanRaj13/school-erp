@@ -1,0 +1,351 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../core/auth/auth_providers.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/stat_card.dart';
+import '../../../shared/widgets/warm_backdrop.dart';
+
+/// Finance workspace overview for admin — real data only.
+///
+/// Fee collection (collected/pending/overdue), revenue vs expense vs budget,
+/// purchase-order pipeline by status, EMI plans active, pending waivers count.
+class AdminFinanceOverviewScreen extends ConsumerWidget {
+  const AdminFinanceOverviewScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final client = ref.watch(supabaseClientProvider);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: WarmBackdrop(
+        child: SafeArea(
+          child: FutureBuilder<_FinanceOverviewData>(
+            future: _load(client),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Failed to load: ${snapshot.error}'));
+              }
+              final data = snapshot.data!;
+
+              return CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                    sliver: SliverToBoxAdapter(
+                      child: Text('Finance Overview', style: Theme.of(context).textTheme.headlineMedium),
+                    ),
+                  ),
+
+                  // ── Fee Collection ──
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    sliver: SliverToBoxAdapter(
+                      child: Text('Fee Collection', style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.5,
+                      ),
+                      delegate: SliverChildListDelegate([
+                        StatCard(
+                          label: 'Collected',
+                          value: '₹${data.feeCollected.toStringAsFixed(0)}',
+                          icon: Icons.check_circle_outline,
+                          color: AppColors.success,
+                        ),
+                        StatCard(
+                          label: 'Pending',
+                          value: '₹${data.feePending.toStringAsFixed(0)}',
+                          icon: Icons.hourglass_empty_outlined,
+                          color: AppColors.warning,
+                        ),
+                        StatCard(
+                          label: 'Overdue',
+                          value: '₹${data.feeOverdue.toStringAsFixed(0)}',
+                          icon: Icons.error_outline,
+                          color: AppColors.error,
+                        ),
+                      ]),
+                    ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+                  // ── Revenue vs Expense vs Budget ──
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    sliver: SliverToBoxAdapter(
+                      child: Text('Revenue vs Expense vs Budget', style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.5,
+                      ),
+                      delegate: SliverChildListDelegate([
+                        StatCard(
+                          label: 'Total Revenue',
+                          value: '₹${data.totalRevenue.toStringAsFixed(0)}',
+                          icon: Icons.trending_up_outlined,
+                          color: AppColors.success,
+                        ),
+                        StatCard(
+                          label: 'Total Expenses',
+                          value: '₹${data.totalExpenses.toStringAsFixed(0)}',
+                          icon: Icons.trending_down_outlined,
+                          color: AppColors.error,
+                        ),
+                        StatCard(
+                          label: 'Budget Remaining',
+                          value: '₹${data.budgetRemaining.toStringAsFixed(0)}',
+                          icon: Icons.account_balance_outlined,
+                          color: data.budgetRemaining >= 0 ? AppColors.primary : AppColors.error,
+                        ),
+                      ]),
+                    ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+                  // ── Purchase-Order Pipeline ──
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    sliver: SliverToBoxAdapter(
+                      child: Text('Purchase-Order Pipeline', style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.6,
+                      ),
+                      delegate: SliverChildListDelegate([
+                        StatCard(
+                          label: 'Pending Approval',
+                          value: '${data.poPendingApproval}',
+                          icon: Icons.pending_actions_outlined,
+                          color: AppColors.warning,
+                        ),
+                        StatCard(
+                          label: 'Approved (unpaid)',
+                          value: '${data.poApproved}',
+                          icon: Icons.check_circle_outline,
+                          color: AppColors.success,
+                        ),
+                        StatCard(
+                          label: 'Paid',
+                          value: '${data.poPaid}',
+                          icon: Icons.payments_outlined,
+                        ),
+                        StatCard(
+                          label: 'Rejected',
+                          value: '${data.poRejected}',
+                          icon: Icons.cancel_outlined,
+                          color: AppColors.error,
+                        ),
+                      ]),
+                    ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+                  // ── EMI & Waivers ──
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    sliver: SliverToBoxAdapter(
+                      child: Text('EMI & Waivers', style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.6,
+                      ),
+                      delegate: SliverChildListDelegate([
+                        StatCard(
+                          label: 'Active EMI Plans',
+                          value: '${data.emiActive}',
+                          icon: Icons.credit_score_outlined,
+                          color: AppColors.primary,
+                        ),
+                        StatCard(
+                          label: 'Pending Waivers',
+                          value: '${data.waiversPending}',
+                          icon: Icons.volunteer_activism_outlined,
+                          color: AppColors.warning,
+                        ),
+                      ]),
+                    ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<_FinanceOverviewData> _load(SupabaseClient client) async {
+    // ── Fee collection from invoices ──
+    final invoiceRows = await client
+        .schema('finance')
+        .from('invoices')
+        .select('id, status, amount_due, total_amount');
+    final invoiceList = List<Map<String, dynamic>>.from(invoiceRows as List);
+
+    double feeCollected = 0;
+    double feePending = 0;
+    double feeOverdue = 0;
+    for (final inv in invoiceList) {
+      final amountDue = (inv['amount_due'] as num?)?.toDouble() ?? 0;
+      final totalAmount = (inv['total_amount'] as num?)?.toDouble() ?? 0;
+      final status = inv['status'] as String? ?? '';
+      final collected = totalAmount - amountDue;
+      if (collected > 0) feeCollected += collected;
+      if (status == 'overdue') {
+        feeOverdue += amountDue;
+      } else if (amountDue > 0) {
+        feePending += amountDue;
+      }
+    }
+
+    // ── Revenue from payments ──
+    final paymentRows = await client
+        .schema('finance')
+        .from('payments')
+        .select('id, amount, status');
+    final paymentList = List<Map<String, dynamic>>.from(paymentRows as List);
+    final totalRevenue = paymentList
+        .where((p) => p['status'] == 'completed')
+        .fold<double>(0, (sum, p) => sum + (p['amount'] as num).toDouble());
+
+    // ── Expenses from vendor_payments (paid only) ──
+    final vpRows = await client
+        .schema('finance')
+        .from('vendor_payments')
+        .select('id, amount, status');
+    final vpList = List<Map<String, dynamic>>.from(vpRows as List);
+    final totalExpenses = vpList
+        .where((v) => v['status'] == 'paid')
+        .fold<double>(0, (sum, v) => sum + (v['amount'] as num).toDouble());
+
+    // ── Budget ──
+    final budgetRows = await client
+        .schema('finance')
+        .from('budgets')
+        .select('id, allocated_amount');
+    final budgetList = List<Map<String, dynamic>>.from(budgetRows as List);
+    final totalBudget = budgetList.fold<double>(
+        0, (sum, b) => sum + (b['allocated_amount'] as num).toDouble());
+    final budgetRemaining = totalBudget - totalExpenses;
+
+    // ── PO pipeline ──
+    final poRows = await client
+        .schema('finance')
+        .from('purchase_orders')
+        .select('id, status');
+    final poList = List<Map<String, dynamic>>.from(poRows as List);
+    int poPendingApproval = 0, poApproved = 0, poPaid = 0, poRejected = 0;
+    for (final po in poList) {
+      switch (po['status']) {
+        case 'pending_approval':
+          poPendingApproval++;
+        case 'approved':
+          poApproved++;
+        case 'paid':
+          poPaid++;
+        case 'rejected':
+          poRejected++;
+      }
+    }
+
+    // ── EMI plans ──
+    final emiRows = await client
+        .schema('finance')
+        .from('emi_plans')
+        .select('id, status');
+    final emiList = List<Map<String, dynamic>>.from(emiRows as List);
+    final emiActive = emiList.where((e) => e['status'] == 'active').length;
+
+    // ── Pending waivers ──
+    final waiverRows = await client
+        .schema('finance')
+        .from('waiver_requests')
+        .select('id, status');
+    final waiverList = List<Map<String, dynamic>>.from(waiverRows as List);
+    final waiversPending = waiverList.where((w) => w['status'] == 'pending').length;
+
+    return _FinanceOverviewData(
+      feeCollected: feeCollected,
+      feePending: feePending,
+      feeOverdue: feeOverdue,
+      totalRevenue: totalRevenue,
+      totalExpenses: totalExpenses,
+      budgetRemaining: budgetRemaining,
+      poPendingApproval: poPendingApproval,
+      poApproved: poApproved,
+      poPaid: poPaid,
+      poRejected: poRejected,
+      emiActive: emiActive,
+      waiversPending: waiversPending,
+    );
+  }
+}
+
+class _FinanceOverviewData {
+  const _FinanceOverviewData({
+    required this.feeCollected,
+    required this.feePending,
+    required this.feeOverdue,
+    required this.totalRevenue,
+    required this.totalExpenses,
+    required this.budgetRemaining,
+    required this.poPendingApproval,
+    required this.poApproved,
+    required this.poPaid,
+    required this.poRejected,
+    required this.emiActive,
+    required this.waiversPending,
+  });
+
+  final double feeCollected;
+  final double feePending;
+  final double feeOverdue;
+  final double totalRevenue;
+  final double totalExpenses;
+  final double budgetRemaining;
+  final int poPendingApproval;
+  final int poApproved;
+  final int poPaid;
+  final int poRejected;
+  final int emiActive;
+  final int waiversPending;
+}

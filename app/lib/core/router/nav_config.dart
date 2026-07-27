@@ -127,13 +127,36 @@ RoleNav navFor(UserRole role) {
       ]);
 
     case UserRole.admin:
-      // Admin's front page is the dashboard at /admin (recent payments summary).
-      // Same destinations as principal minus the principal-only overview — admin sees
-      // its own overview as item 1, then the operational links.
+      // Admin's sidebar is split into HR / Finance workspaces via a SegmentedButton
+      // toggle in the sidebar. The headerless Overview section is replaced at render
+      // time by the workspace-specific overview (HR or Finance). The sidebar's
+      // _adminSections method filters sections by the active workspace — here we
+      // declare ALL sections and let the sidebar pick which to show.
+      //
+      // HR workspace: Payroll, HR Approvals (payroll-only filter of Approval Queue),
+      //   Leave Requests.
+      // Finance workspace: Fee Management, Offline Payments, Finance Approvals
+      //   (POs + vendor payments only), Vendors & Procurement, Vendor Performance,
+      //   EMI/Financing, Budget, Late Fees, Scholarships & Waivers.
+      // Shared Operations: Announcements, Messages, OMR Attendance, Document Review,
+      //   Weekly Timetable — always visible in both workspaces.
       return const RoleNav(sections: [
+        // Headerless — replaced by _adminSections with workspace-specific overview.
         NavSection(destinations: [
           NavDestination(
               icon: Icons.space_dashboard_outlined, label: 'Overview', route: '/admin'),
+        ]),
+        NavSection(header: 'HR', destinations: [
+          NavDestination(
+              icon: Icons.payments_outlined, label: 'Payroll', route: '/admin/payroll'),
+          NavDestination(
+              icon: Icons.pending_actions_outlined,
+              label: 'HR Approvals',
+              route: '/admin/approvals/hr'),
+          NavDestination(
+              icon: Icons.event_busy_outlined,
+              label: 'Leave Requests',
+              route: '/admin/leave'),
         ]),
         NavSection(header: 'Finance', destinations: [
           NavDestination(
@@ -146,10 +169,8 @@ RoleNav navFor(UserRole role) {
               route: '/admin/offline-payments'),
           NavDestination(
               icon: Icons.pending_actions_outlined,
-              label: 'Approval Queue',
-              route: '/admin/approvals'),
-          NavDestination(
-              icon: Icons.payments_outlined, label: 'Payroll', route: '/admin/payroll'),
+              label: 'Finance Approvals',
+              route: '/admin/approvals/finance'),
           NavDestination(
               icon: Icons.storefront_outlined,
               label: 'Vendors & Procurement',
@@ -173,9 +194,11 @@ RoleNav navFor(UserRole role) {
         ]),
         NavSection(header: 'Operations', destinations: [
           NavDestination(
-              icon: Icons.event_busy_outlined,
-              label: 'Leave Requests',
-              route: '/admin/leave'),
+              icon: Icons.campaign_outlined,
+              label: 'Announcements',
+              route: '/admin/announcements'),
+          NavDestination(
+              icon: Icons.mail_outline, label: 'Messages', route: '/admin/messages'),
           NavDestination(
               icon: Icons.document_scanner_outlined,
               label: 'OMR Attendance',
@@ -188,14 +211,6 @@ RoleNav navFor(UserRole role) {
               icon: Icons.calendar_view_week_outlined,
               label: 'Weekly Timetable',
               route: '/admin/timetable'),
-        ]),
-        NavSection(header: 'Communication', destinations: [
-          NavDestination(
-              icon: Icons.campaign_outlined,
-              label: 'Announcements',
-              route: '/admin/announcements'),
-          NavDestination(
-              icon: Icons.mail_outline, label: 'Messages', route: '/admin/messages'),
         ]),
         NavSection(destinations: [
           NavDestination(

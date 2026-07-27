@@ -8,11 +8,14 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
-/// Shared announcements screen — same screen for every role, since the read side is
-/// identical (academic.announcements, school-wide or class-scoped). Only staff roles
-/// (teacher/admin/principal) see the "New announcement" button — students/parents get
-/// a read-only view. Matches the same role-aware-single-screen pattern already used
-/// for LeaveRequestsScreen rather than duplicating near-identical screens per role.
+/// Shared announcements screen — same screen for every role. Staff roles
+/// (teacher/admin/principal) see a "New announcement" button; students/parents
+/// get a read-only view.
+///
+/// Assembles announcements from academic.announcements, grouped or filtered by
+/// the viewer's role. Evolving from 000 — teachers can now target announcements
+/// to a specific class (the class_id column in the DB was already there, just
+/// unused). Admin/principal still default to school-wide.
 class AnnouncementsScreen extends ConsumerStatefulWidget {
   const AnnouncementsScreen({super.key});
 
@@ -21,7 +24,7 @@ class AnnouncementsScreen extends ConsumerStatefulWidget {
 }
 
 class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
-  late Future<List<Map<String, dynamic>>> _future;
+  late Future<_AnnouncementData> _future;
 
   @override
   void initState() {
@@ -29,17 +32,49 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     _future = _load();
   }
 
-  Future<List<Map<String, dynamic>>> _load() async {
+  Future<_AnnouncementData> _load() async {
     final client = ref.read(supabaseClientProvider);
+    final selfStaffId = await ref.read(selfStaffIdProvider.future);
+
+    // Load announcements.
     final rows = await client
         .schema('academic')
         .from('announcements')
-        .select('id, title, body, class_id, created_at')
+        .select('id, title, body, class_id, created_at, author_staff_id')
         .order('created_at', ascending: false);
-    return List<Map<String, dynamic>>.from(rows as List);
+    final announcements = List<Map<String, dynamic>>.from(rows as List);
+
+    // Load classes for the picker.
+    final classRows = await client
+        .schema('academic')
+        .from('classes')
+        .select('id, name');
+    final allClasses = List<Map<String, dynamic>>.from(classRows as List);
+    final classNameById = {for (final c in allClasses) c['id'] as String: c['name'] as String};
+
+    // For teacher: find which classes they teach via timetable.
+    Set<String> taughtClassIds = {};
+    if (selfStaffId != null) {
+      final tts = await client
+          .schema('scheduling')
+          .from('timetable')
+          .select('class_id')
+          .eq('teacher_id', selfStaffId);
+      for (final t in tts as List) {
+        final cid = t['class_id'] as String;
+        if (cid.isNotEmpty) taughtClassIds.add(cid);
+      }
+    }
+
+    return _AnnouncementData(
+      announcements: announcements,
+      allClasses: allClasses,
+      classNameById: classNameById,
+      taughtClassIds: taughtClassIds,
+    );
   }
 
-  Future<void> _post(String title, String body) async {
+  Future<void> _post(String title, String body, String? classId) async {
     final selfStaffId = await ref.read(selfStaffIdProvider.future);
     if (selfStaffId == null) {
       _showSnack('Your account must be linked to a staff record to post.', isError: true);
@@ -52,9 +87,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
         'author_staff_id': selfStaffId,
         'title': title,
         'body': body,
-        // class_id intentionally left null — a school-wide announcement. Extending to
-        // a class-specific picker is a straightforward follow-up, not built here to
-        // keep this screen's first version simple and shippable.
+        if (classId != null) 'class_id': classId,
       });
       _showSnack('Announcement posted.');
     } catch (e) {
@@ -70,40 +103,62 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     setState(() { _future = _load(); });
   }
 
-  void _showPostSheet() {
+  void _showPostSheet(List<Map<String, dynamic>> allClasses, Set<String> taughtClassIds) {
     final titleController = TextEditingController();
     final bodyController = TextEditingController();
+    // null = school-wide; a Map entry = selected class.
+    Map<String, dynamic>? selectedClass;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.card)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('New Announcement', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title')),
-              const SizedBox(height: 12),
-              TextField(controller: bodyController, decoration: const InputDecoration(labelText: 'Message'), maxLines: 4),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  if (titleController.text.trim().isEmpty) return;
-                  Navigator.of(context).pop();
-                  _post(titleController.text.trim(), bodyController.text.trim());
-                },
-                child: const Text('Post announcement'),
-              ),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.card)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('New Announcement', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title')),
+                const SizedBox(height: 12),
+                TextField(controller: bodyController, decoration: const InputDecoration(labelText: 'Message'), maxLines: 4),
+                const SizedBox(height: 12),
+                // Class picker — only for teacher role; admin/principal stay school-wide.
+                if (taughtClassIds.isNotEmpty) ...[
+                  DropdownButtonFormField<Map<String, dynamic>?>(
+                    decoration: const InputDecoration(labelText: 'Target'),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('School-wide (all classes)')),
+                      for (final c in allClasses.where((c) => taughtClassIds.contains(c['id'])))
+                        DropdownMenuItem(value: c, child: Text(c['name'] as String)),
+                    ],
+                    onChanged: (v) => setModalState(() => selectedClass = v),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    if (titleController.text.trim().isEmpty) return;
+                    Navigator.of(context).pop();
+                    _post(
+                      titleController.text.trim(),
+                      bodyController.text.trim(),
+                      selectedClass?['id'] as String?,
+                    );
+                  },
+                  child: const Text('Post announcement'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -119,7 +174,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
       backgroundColor: Colors.transparent,
       body: WarmBackdrop(
         child: SafeArea(
-          child: FutureBuilder<List<Map<String, dynamic>>>(
+          child: FutureBuilder<_AnnouncementData>(
             future: _future,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
@@ -128,7 +183,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
               if (snapshot.hasError) {
                 return Center(child: Text('Failed to load: ${snapshot.error}'));
               }
-              final announcements = snapshot.data!;
+              final data = snapshot.data!;
 
               return CustomScrollView(
                 slivers: [
@@ -141,7 +196,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                           Text('Announcements', style: Theme.of(context).textTheme.headlineMedium),
                           if (canPost)
                             ElevatedButton.icon(
-                              onPressed: _showPostSheet,
+                              onPressed: () => _showPostSheet(data.allClasses, data.taughtClassIds),
                               icon: const Icon(Icons.add, size: 18),
                               label: const Text('New'),
                             ),
@@ -149,7 +204,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                       ),
                     ),
                   ),
-                  if (announcements.isEmpty)
+                  if (data.announcements.isEmpty)
                     const SliverFillRemaining(
                       hasScrollBody: false,
                       child: Center(child: Text('No announcements yet.')),
@@ -159,30 +214,41 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          announcements.map((a) => Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: GlassCard(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.campaign_outlined, color: AppColors.primary, size: 20),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(a['title'] as String, style: Theme.of(context).textTheme.titleMedium),
-                                          ),
-                                        ],
-                                      ),
-                                      if ((a['body'] as String?)?.isNotEmpty ?? false) ...[
-                                        const SizedBox(height: 8),
-                                        Text(a['body'] as String, style: Theme.of(context).textTheme.bodyMedium),
+                          data.announcements.map((a) {
+                            final classId = a['class_id'] as String?;
+                            final scopeLabel = classId != null
+                                ? (data.classNameById[classId] ?? 'A class')
+                                : 'School-wide';
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: GlassCard(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.campaign_outlined, color: AppColors.primary, size: 20),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(a['title'] as String, style: Theme.of(context).textTheme.titleMedium),
+                                        ),
                                       ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    // Scope badge.
+                                    GlassChip(
+                                      label: scopeLabel,
+                                      color: classId != null ? AppColors.primary : AppColors.textSecondary,
+                                    ),
+                                    if ((a['body'] as String?)?.isNotEmpty ?? false) ...[
+                                      const SizedBox(height: 8),
+                                      Text(a['body'] as String, style: Theme.of(context).textTheme.bodyMedium),
                                     ],
-                                  ),
+                                  ],
                                 ),
-                              ))
-                              .toList(),
+                              ),
+                            );
+                          }).toList(),
                         ),
                       ),
                     ),
@@ -194,4 +260,18 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
       ),
     );
   }
+}
+
+class _AnnouncementData {
+  _AnnouncementData({
+    required this.announcements,
+    required this.allClasses,
+    required this.classNameById,
+    required this.taughtClassIds,
+  });
+
+  final List<Map<String, dynamic>> announcements;
+  final List<Map<String, dynamic>> allClasses;
+  final Map<String, String> classNameById;
+  final Set<String> taughtClassIds;
 }

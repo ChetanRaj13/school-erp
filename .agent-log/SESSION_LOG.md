@@ -3,14 +3,65 @@
 This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; append a new entry when you finish a task.
 
 ---
-- 2026-07-25 : 6 UI/UX fixes applied across 5 files.
-  1) gradebook_screen.dart: deduplicated subject dropdown (subjects table has
-  one row per qualified-teacher pair, so names repeated — applied same .where
-  seenNames.add pattern as teacher_assignments_screen.dart).
-  2) app_theme.dart: glassFill opacity 50%→65% (0x80→0xA6), textSecondary
-  darkened (#78846F→#5A6354) for contrast, bodyLarge 16→17, bodyMedium 14→15,
-  added bodySmall definition. glass_card.dart: GlassChip font 13→14.
-  3) messages_screen.dart: FutureBuilder was not rebuilding after send — added
+- 2026-07-27 (session 3): Migration files placed, Razorpay handler fix, full itemized fee-breakdown UI built.
+  MIGRATIONS: Copied 0002_finance_schema.sql (full replacement for stub), 0013_baseline_reconciliation.sql,
+  0014_invoice_line_items.sql from Downloads into supabase/migrations/. Deleted dead 0004_staff_schema.sql
+  (created a `staff` schema that doesn't exist live). Deleted misplaced app/supabase/migrations/0009_auth_linkage.sql
+  (redundant with 0013 which already includes auth_user_id on students/staff). Cleaned 0001 — removed
+  bare students/staff CREATE TABLE blocks that would collide with 0013. Apply order: 0001→0002→0003→...→0012→0013→0014.
+  RAZORPAY: Moved the success handler from rzp['handler'] = ... (post-construction) into the options object
+  passed to Razorpay constructor — the SDK reads it during instantiation, not after. The core .callMethod('newInstance')
+  fix from session 2 was preserved. PARENT_FEES_SCREEN: Complete rewrite with itemized fee breakdown UI:
+  student identity block (admission number, name, class from academic.classes.name, roll_no from class_roster),
+  per-fee-head table with demo placeholder heads (sum ₹57,000), fallback to invoice's single amount when no
+  invoice_line_items rows exist, financial summary (scholarship from waiver_requests, refunds from payments.status,
+  outstanding), full payment history table with TX ID, method badge, status, datetime, and download receipt button.
+  Payment query expanded to fetch ALL student payments (not just unpaid invoice payments) so refunds show in history.
+- 2026-07-27 : Razorpay web crash fix completed. Fixed razorpay_web.dart by replacing `.newInstance([options])` with `.callMethod('newInstance', [options])` to resolve NoSuchMethodError during checkout invocation. Updated parent_fees_screen.dart to cleanly call openRazorpayCheckout without broken #if WEB guards; analyzer now reports 0 issues. Mobile payment flow remains stubbed (shows message) awaiting full razorpay_flutter integration. Fee breakdown feature groundwork started but not yet implemented. Also copied context-handoff-brief.md to repo root; verified 0014_invoice_line_items.sql in Downloads. Missing migration files 0002 and 0013 not found — awaiting user input to proceed with migration sequencing.
+
+- 2026-07-25 : Parent Messages restriction + EMI Parent Requests + backend verification.
+  1) messages_screen.dart: Parent compose restricts recipients to class teachers of
+     linked children + Principal + Admin, instead of all staff. Parent sends using
+     their linked child's student_id as sender_student_id.
+  2) emi_financing_screen.dart: "Parent Requests" section shows payment_plans with
+     status='requested', Approve/Reject buttons, parallel to waiver approval.
+  3) Backend verification: supabase/functions/create-razorpay-order/index.ts EXISTS —
+     creates real Razorpay orders. The webhook at razorpay-webhook/index.ts is also
+     complete. The Flutter-side razorpay_flutter wiring is what's missing to enable
+     "Pay Online" — the backend is ready.
+- 2026-07-25 : Teacher-scoped announcements + messages.
+  1) announcements_screen.dart: added class targeting — teachers can pick a
+     specific class (from scheduling.timetable) when posting. Class scope shown
+     as badge on each announcement card ("School-wide" or class name).
+  2) messages_screen.dart: teacher compose now shows students in their taught
+     classes (via timetable) instead of all staff. Uses recipient_student_id for
+     teacher→student messages. Non-teachers still see all-staff recipient list.
+- 2026-07-25 : Admin workspace split: HR / Finance dual-workspace UI.
+  1) admin_workspace_provider.dart: new StateNotifier<AdminWorkspace> (enum hr/finance).
+  2) nav_config.dart: admin sections restructured — HR (Payroll, HR Approvals, Leave
+     Requests), Finance (Fee Mgmt, Offline Payments, Finance Approvals, Vendors,
+     Vendor Perf, EMI, Budget, Late Fees, Waivers), shared Operations always visible.
+  3) role_shell.dart: _WorkspaceToggle (SegmentedButton) at top of admin sidebar +
+     drawer; _adminSections() filters nav sections by active workspace, replacing
+     the headerless Overview with workspace-specific overview route.
+  4) admin_hrm_overview_screen.dart: staff headcount by role, leave request summary,
+     payroll summary. HONEST: staff_attendance shown as "not yet in use".
+  5) admin_finance_overview_screen.dart: fee collected/pending/overdue, revenue vs
+     expense vs budget, PO pipeline by status, EMI active count, pending waivers.
+  6) approval_queue_screen.dart: filter param ('hr'|'finance'|null) — HR shows
+     payroll only, Finance shows POs+vendor payments only, null shows all.
+  7) waiver_requests_screen.dart: added Disburse button (status=approved AND
+     disbursed_at IS NULL) — reduces invoice.amount_due, sets disbursed_at.
+  8) fee_management_screen.dart: GST invoice generation button on overdue+upcoming
+     invoice cards, calls ReceiptGenerator.generateGstInvoiceAndUpload.
+  9) app_router.dart: registered /admin/hr-overview, /admin/finance-overview,
+     /admin/approvals/hr, /admin/approvals/finance routes.
+- 2026-07-27 : Razorpay web crash fix and fee breakdown foundation.
+  1) Fixed razorpay_web.dart: replaced `.newInstance([options])` with `.callMethod('newInstance', [options])` to resolve NoSuchMethodError on web checkout.
+  2) Updated parent_fees_screen.dart: removed broken #if WEB guards, simplified to use razorpay.openRazorpayCheckout directly; added platform stub for mobile (shows message).
+  3) Prepared groundwork for itemized fee breakdown: extended data model queries to include invoice_line_items, student class info, waivers, and refunds (implementation pending).
+  4) Migration notes: context-handoff-brief.md copied to repo root; 0014_invoice_line_items.sql verified in supabase/migrations/. Missing migration files (0002_finance_schema.sql, 0013_baseline_reconciliation.sql) not found in Downloads - awaiting user input.
+  5) Known landmines in migrations: 0004_staff_schema.sql is dead (creates non-existent staff schema); app/supabase/migrations/0009_auth_linkage.sql is in wrong location; 001_shared_reference_tables.sql contains CREATE TABLE students/staff that will conflict with future baseline reconciliation.
   ValueKey(_loadGeneration) so it rebuilds on each send. Added debugPrint
   logging around bulk insert. Changed compose sheet from single-select dropdown
   to multi-select ChoiceChip Wrap for bulk messaging. _send now accepts

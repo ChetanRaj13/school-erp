@@ -9,6 +9,8 @@ import '../../features/auth/unauthorized_screen.dart';
 import '../../features/dashboard/principal/principal_dashboard.dart';
 import '../../features/dashboard/principal/budget_screen.dart';
 import '../../features/dashboard/admin/admin_dashboard.dart';
+import '../../features/dashboard/admin/admin_finance_overview_screen.dart';
+import '../../features/dashboard/admin/admin_hrm_overview_screen.dart';
 import '../../features/dashboard/admin/approval_queue_screen.dart';
 import '../../features/dashboard/admin/payroll_screen.dart';
 import '../../features/dashboard/admin/vendor_procurement_screen.dart';
@@ -64,6 +66,8 @@ const _sharedRoutes = <_RouteDef>[
   // Role front pages.
   _RouteDef('/principal', _principal),
   _RouteDef('/admin', _admin),
+  _RouteDef('/admin/hr-overview', _adminHrOverview),
+  _RouteDef('/admin/finance-overview', _adminFinanceOverview),
   _RouteDef('/teacher', _teacher),
   _RouteDef('/student', _student),
   _RouteDef('/parent', _parent),
@@ -73,6 +77,8 @@ const _sharedRoutes = <_RouteDef>[
   _RouteDef('/admin/omr', _omr),
   _RouteDef('/admin/documents', _documents),
   _RouteDef('/admin/approvals', _approvals),
+  _RouteDef('/admin/approvals/hr', _approvalsHr),
+  _RouteDef('/admin/approvals/finance', _approvalsFinance),
   _RouteDef('/admin/payroll', _payroll),
   _RouteDef('/admin/vendors', _vendors),
   _RouteDef('/admin/vendor-performance', _vendorPerf),
@@ -119,6 +125,8 @@ const _sharedRoutes = <_RouteDef>[
 // can't reference inline closures). Keeping them tiny + colocated with the route table.
 Widget _principal(_, __) => const PrincipalDashboard();
 Widget _admin(_, __) => const AdminDashboard();
+Widget _adminHrOverview(_, __) => const AdminHrmOverviewScreen();
+Widget _adminFinanceOverview(_, __) => const AdminFinanceOverviewScreen();
 Widget _teacher(_, __) => const TeacherSummaryScreen();
 Widget _student(_, __) => const StudentOverviewScreen();
 Widget _parent(_, __) => const ParentOverviewScreen();
@@ -126,6 +134,8 @@ Widget _timetable(_, __) => const TimetableGridScreen();
 Widget _omr(_, __) => const OmrUploadScreen();
 Widget _documents(_, __) => const DocumentReviewScreen();
 Widget _approvals(_, __) => const ApprovalQueueScreen();
+Widget _approvalsHr(_, __) => const ApprovalQueueScreen(filter: 'hr');
+Widget _approvalsFinance(_, __) => const ApprovalQueueScreen(filter: 'finance');
 Widget _payroll(_, __) => const PayrollScreen();
 Widget _vendors(_, __) => const VendorProcurementScreen();
 Widget _vendorPerf(_, __) => const VendorPerformanceScreen();

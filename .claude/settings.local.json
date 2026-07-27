@@ -88,7 +88,8 @@
       "Bash(findstr \":8001 :8002 :8003 :8004\")",
       "Bash(findstr :80012)",
       "Bash(flutter analyze *)",
-      "Bash(dart analyze *)"
+      "Bash(dart analyze *)",
+      "Bash(flutter pub *)"
     ]
   }
 }
