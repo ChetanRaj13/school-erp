@@ -5,6 +5,9 @@ nd a new entry when you finish a task. Don't remove anything from the existing f
 
 ---
 
+## [2026-07-28] Remove Deprecated --web-renderer Option for Flutter 3.29+ Compatibility
+Removed the deprecated `--web-renderer` flag from `build.sh`. The latest stable Flutter version (3.29+) has removed the legacy HTML renderer and transitioned CanvasKit/SkWasm to be standard renderers, which caused the build command to fail with "Could not find an option named '--web-renderer'".
+
 ## [2026-07-28] Delegate Vercel buildCommand to build.sh script
 Created `build.sh` in the project root containing the memory limit configurations and target CanvasKit compilation parameters. Pointed the Vercel project `buildCommand` directly to `bash build.sh` to resolve Vercel's schema validation error stating that `buildCommand` cannot exceed 256 characters (the previous inline shell command was 283 characters).
 
