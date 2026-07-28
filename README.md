@@ -1,258 +1,102 @@
-# Post-Checkpoint Delivery — Setup Guide
+# School ERP — Fintech Suite
 
-This covers everything built since the message where I checked the 7 background image
-dimensions ("Before I build anything — 7 images is an odd number..."). Nothing before
-that point is included here — you'd already set those up. This zip + this README + the
-Grok prompts at the bottom are the complete, ordered path to catch up.
+A submission for the **Smart School Fintech Innovation Challenge**. This project reimagines how a school handles money — fee collection, payments, payroll, procurement, and financial oversight — as a single connected system instead of registers, spreadsheets, and manual reconciliation.
 
----
+Five roles sign into one app — Principal, Admin, Teacher, Student, Parent — and each sees a role-specific view of the same underlying financial data, backed by a Postgres database with row-level security enforcing who can see and touch what.
 
-## Part 1 — Files that need to be placed (this zip)
+## The core fintech problem this solves
 
-### Step 1: Extract
+Schools handle a surprising amount of financial complexity: fee collection across hundreds of students with different due dates and partial payments, late fee calculation, scholarship and waiver approvals, EMI-style fee financing for families who can't pay in one lump sum, vendor payments, payroll, and reconciliation — most of it still done by hand in a lot of schools. This project puts all of it on rails: every rupee is tracked from invoice to payment to reconciliation, with an audit trail and approval workflow instead of a paper register.
 
-```powershell
-cd "C:\Users\rajch\Desktop\AI\COMPS\school-erp-project-structure\school-erp"
-Expand-Archive -Path "$HOME\Downloads\POST_ANCHOR_COMBINED.zip" -DestinationPath "." -Force
+## Razorpay — online fee payments
+
+Online payment is the centerpiece of the fintech story here: a parent should be able to open the app, see exactly what's due for their child, and pay it — with the money landing correctly against the right invoice, no manual entry required on the school's side.
+
+How it's wired:
+
+- **Order creation** happens server-side through a Supabase Edge Function — the app never talks to Razorpay directly with a client-trusted amount. The order amount is meant to be looked up from the actual invoice on the server, not passed in blind from the client, so a parent can't tamper with what they're charged.
+- **Checkout** opens via `razorpay_flutter` on mobile, with a web-specific bridge for Flutter web (Razorpay's SDK is JS-based, so the web build talks to it through a small interop layer rather than the native package).
+- **Payment confirmation is webhook-driven, not client-driven** — a Razorpay webhook is the only thing allowed to mark an invoice as paid. The webhook verifies the payment signature (constant-time HMAC-SHA256) before touching the database, so a spoofed "success" callback from the client can never fake a payment.
+- **Idempotency** — duplicate webhook deliveries for the same payment are detected and ignored, so a network retry from Razorpay can't double-count a payment.
+- **Atomic balance updates** — when a payment lands, the invoice's paid amount is updated with a single atomic Postgres operation, not a read-then-write from the app, so two payments arriving close together can't silently overwrite each other and lose money.
+- **Test mode** — currently running against Razorpay's test environment, so the full payment flow can be demoed end-to-end without moving real money.
+
+## Other fintech features
+
+- **Fee management** — per-student invoices, partial payments, offline payment recording (cash/cheque) with the same atomic balance-update guarantee as online payments, and GST-compliant invoice generation
+- **Late fees** — automatic calculation on overdue invoices
+- **Scholarships & waivers** — parents can request a fee waiver; admin approves or rejects, and approved waivers reduce the invoice balance with a clear disbursement step and timestamp
+- **EMI / fee financing** — parents can request to split a fee into installments instead of paying in full, with an admin approval step before a payment plan becomes active
+- **Payroll** — staff salary runs, with an approval queue before payments are finalized
+- **Vendor & procurement** — purchase orders, vendor performance tracking, and vendor payments, each going through the same approval-queue pattern as payroll
+- **Bank reconciliation** — matching recorded payments against what's actually settled
+- **Financial oversight dashboards** — fee collection vs. pending vs. overdue, revenue vs. expense vs. budget, purchase-order pipeline by status, all built from real invoice and payment data rather than static numbers
+
+## Roles and what each one does financially
+
+- **Principal / Admin** — full financial oversight: fee management, payroll, vendor payments, budget, approvals for both HR and Finance workflows
+- **Parent** — sees exactly what's owed for their child, pays online via Razorpay or waits on an approved waiver/EMI plan
+- **Student** — read-only visibility into their own fee status
+- **Teacher** — no direct financial role, kept separate from money-handling by design
+
+## Stack
+
+- **App**: Flutter (web), Riverpod for state, go_router for navigation
+- **Backend**: Supabase — Postgres, auth, storage, Edge Functions (Deno/TypeScript), row-level security scoping every financial table by school and role
+- **Payments**: Razorpay, via a server-verified Edge Function + webhook flow
+- **Microservices**: FastAPI, for supporting features like document extraction and OMR-based attendance, run via Docker Compose
+
+## Project layout
+
+```
+app/            Flutter application (all 5 role dashboards live under lib/features/dashboard/)
+supabase/       Migrations, Edge Functions (including the Razorpay order + webhook functions), config
+services/       FastAPI microservices
+docs/           Project documentation
+scripts/        Utility scripts
+test/           Tests
+docker-compose.yml   Runs the microservices locally
 ```
 
-### Step 2: Register the background images in pubspec.yaml
+## Running it locally
 
-Open app\pubspec.yaml, add under the flutter: section (near uses-material-design: true):
-
-```yaml
-  assets:
-    - assets/backgrounds/
-```
-
-If an assets: entry already exists there from earlier tonight, just confirm
-assets/backgrounds/ is listed — don't create a duplicate assets: key.
-
-### Step 3: No new dependencies needed
-
-Everything in this batch (file_picker, url_launcher, pdf, shared_preferences) uses
-packages already added earlier in the session. Just run:
-
-```powershell
+```bash
+# Flutter app
 cd app
 flutter pub get
+flutter run -d chrome
+
+# Backend microservices
+docker compose up -d
 ```
 
-### Full file list, for reference
+You'll need a `.env` file (see `.env.example`) with your Supabase project URL, anon key, and Razorpay test keys. These aren't committed — ask whoever's holding the project credentials.
 
-```
-app/lib/core/theme/background_presets.dart          - 2 real presets
-app/lib/core/theme/background_preset_provider.dart  - persisted selection
-app/lib/shared/widgets/warm_backdrop.dart            - picks image by real screen width
-app/lib/features/settings/settings_screen.dart       - preset picker with real thumbnails
-app/assets/backgrounds/*.jpg                         - 4 real images
+Database migrations are applied directly to the shared Supabase project; there's no local migration step required to run the app against it.
 
-app/lib/features/dashboard/admin/offline_payment_screen.dart
-app/lib/features/dashboard/admin/fee_management_screen.dart
-app/lib/core/utils/receipt_generator.dart             - now includes GST tax invoice too
+## Security, as it relates to handling money
 
-app/lib/features/dashboard/teacher/teacher_summary_screen.dart
-app/lib/features/dashboard/teacher/teacher_attendance_screen.dart
-app/lib/features/dashboard/teacher/gradebook_screen.dart
-app/lib/features/dashboard/teacher/lesson_resources_screen.dart
+- Row-level security on every financial table, scoped by school and role — a parent can only ever see their own child's invoices, an admin only their own school's data
+- Payment confirmation trusted only from the signature-verified Razorpay webhook, never from the client
+- Atomic balance updates on every payment path (online and offline) to eliminate race conditions on invoice balances
+- Approval workflows (not single-click actions) on payroll, vendor payments, waivers, and EMI requests, so no financial commitment happens without a second set of eyes
 
-app/lib/features/dashboard/student/student_overview_screen.dart
-app/lib/features/dashboard/student/student_schedule_screen.dart
-app/lib/features/dashboard/student/student_progress_screen.dart
-app/lib/features/dashboard/student/student_library_screen.dart
+## Where things actually stand
 
-app/lib/features/dashboard/parent/parent_overview_screen.dart
-app/lib/features/dashboard/parent/parent_fees_screen.dart
-app/lib/features/dashboard/parent/parent_schedule_screen.dart
-app/lib/features/dashboard/parent/parent_notifications_screen.dart
-```
+**Working**: fee tracking, offline payment recording, payroll, the HR/Finance approval queue, vendor/procurement flow, waiver and EMI request-and-approval flow, financial dashboards, and the full Razorpay webhook-confirmation path.
 
----
+**Known gap**: the client-side "Pay Online" checkout trigger is still being finished — the webhook confirmation side (the half that actually matters for trusting a payment happened) is built and verified; the order-creation call from the app is the remaining piece.
 
-## Part 2 — Database changes (already live, nothing for you to do)
+## Demo accounts
 
-Everything below was applied directly to your live Supabase database during this
-session via direct SQL — not shipped as files, not something you need to run. Listed
-here for transparency:
+One test account exists per role, so you can log in and click through as any of them:
 
-- Real bug fixed: academic.* and communications.* tables were missing table-level
-  INSERT/UPDATE/DELETE grants (only had SELECT) - fixed
-- Real privacy bug fixed: finance.waiver_requests had a broad "any authenticated user
-  can read" policy exposing every family's waiver reasons to every parent - fixed and
-  verified with a real simulated request
-- New columns: finance.waiver_requests.disbursed_at, finance.payments.reference_number
-- New RLS policies: finance.invoices INSERT, public.notifications INSERT,
-  academic.grades UPDATE, finance.payment_plans parent-scoped INSERT (for EMI
-  self-requests)
-- New table + storage bucket from scratch: academic.lesson_resources +
-  lesson-resources bucket, for Teacher's resource-sharing feature
-- 1,200 real subject-wise marks generated across all 200 students x 6 subjects for
-  Term 1, and another 1,200 for Term 2 with genuine per-student trends (37 students
-  improved 10+ points, 34 declined 10+ points, rest roughly stable)
+| Role | Email | Password |
+|---|---|---|
+| Principal | `ravi@gmail.com` | *(fill in)* |
+| Admin | `anita@gmail.com` | *(fill in)* |
+| Teacher | `cdsingh@gmail.com` | *(fill in)* |
+| Student | `chintu@gmail.com` | *(fill in)* |
+| Parent | `papa@gmail.com` | *(fill in)* |
 
-### Step 4: Verify the live data is really there
-
-```powershell
-npx supabase db query --linked "select term, count(*) from academic.grades group by term;"
-```
-Expect: Term 1 and Term 2, 1200 each.
-
----
-
-## Part 3 - Honest, known gap (not fixed, not fakeable)
-
-"Pay Online" is deliberately disabled in parent_fees_screen.dart, with an explanatory
-tooltip. Only a Razorpay webhook (receives payment confirmation) has ever been
-verified in this project - there's no confirmed order-creation endpoint the app can
-call first. This needs real backend work before it can function - see Grok Prompt 5
-below. I will not fake a "payment succeeded" flow client-side.
-
----
-
-## Part 4 - Verification checklist once everything is placed
-
-- [ ] flutter analyze - should be clean
-- [ ] Settings screen (once Grok wires it in) shows 2 real background thumbnails
-- [ ] Resize the browser window - background should swap around 800px width
-- [ ] Every new screen at least opens without a red error screen
-
----
-
-# Part 5 - Grok prompts, in order
-
-Send these ONE AT A TIME, in this exact order. All were written but never sent.
-
-## Prompt 1 - Cross-cutting bug fix (do this FIRST)
-
-```
-Fix a real, systemic Dart bug found across probably 10+ screens tonight:
-setState(() => _future = _load()). In Dart, this is an assignment EXPRESSION that
-evaluates to the assigned value, so the arrow function actually returns a Future,
-which Flutter's setState explicitly rejects at runtime with "setState() callback
-argument returned a Future".
-
-Grep the whole app/lib directory for this exact pattern and fix every occurrence by
-converting to a block body:
-
-  WRONG:  setState(() => _future = _load());
-  RIGHT:  setState(() { _future = _load(); });
-
-Also fix a related, more serious bug in teacher_assignments_screen.dart's grading
-dialog: the Save button calls Navigator.pop() TWICE in a row, synchronously, with no
-async work between them - popping the dialog and the submissions sheet blind. This
-causes a real "screen goes blank" bug (confirmed via user testing) because the second
-pop can over-pop past the intended target. Restructure so the async grade-save happens
-FIRST, then pop only the dialog, then let the parent screen refresh normally.
-
-Run flutter analyze when done, then verify with real clicks on at least 5-6 of the
-affected screens across different roles - this is a runtime bug, static analysis alone
-won't catch it.
-```
-
-## Prompt 2 - Wire in every new screen from this delivery
-
-```
-Read every file's CURRENT content before editing - this touches nav_config.dart and
-app_router.dart across every role.
-
-New screens to wire in:
-
-Settings (all roles, near sign-out):
-- app/lib/features/settings/settings_screen.dart
-
-Admin (Finance section):
-- app/lib/features/dashboard/admin/offline_payment_screen.dart
-- app/lib/features/dashboard/admin/fee_management_screen.dart
-
-Teacher - make teacher_summary_screen.dart the new LANDING page:
-- app/lib/features/dashboard/teacher/teacher_summary_screen.dart
-- app/lib/features/dashboard/teacher/teacher_attendance_screen.dart
-- app/lib/features/dashboard/teacher/gradebook_screen.dart
-- app/lib/features/dashboard/teacher/lesson_resources_screen.dart
-
-Student - make student_overview_screen.dart the new LANDING page:
-- app/lib/features/dashboard/student/student_overview_screen.dart
-- app/lib/features/dashboard/student/student_schedule_screen.dart
-- app/lib/features/dashboard/student/student_progress_screen.dart
-- app/lib/features/dashboard/student/student_library_screen.dart
-
-Parent - make parent_overview_screen.dart the new LANDING page:
-- app/lib/features/dashboard/parent/parent_overview_screen.dart
-- app/lib/features/dashboard/parent/parent_fees_screen.dart
-- app/lib/features/dashboard/parent/parent_schedule_screen.dart
-- app/lib/features/dashboard/parent/parent_notifications_screen.dart
-Also add Announcements and Messages routes for Parent - they don't exist yet.
-
-Verify every new route with a real click after wiring, not just flutter analyze.
-```
-
-## Prompt 3 - Admin: HR/Finance workspace split + new Overviews
-
-```
-Build a workspace split for Admin - ONE login role, TWO UI workspaces. A toggle at
-the top of Admin's sidebar (HR / Finance) changes which sections show below it, plus
-a shared "Operations" section always visible (Announcements, Messages, OMR
-Attendance, Document Review, Weekly Timetable).
-
-HR workspace: Payroll, HR Approvals (payroll only, filtered from the existing
-Approval Queue, don't duplicate the screen), Leave Requests.
-
-Finance workspace: Vendors & Procurement, Finance Approvals (POs + vendor payments
-only, same Approval Queue different filter), EMI/Financing, Late Fees, Scholarships
-& Waivers, Budget, Bank Reconciliation, Fee Management, Offline Payment Entry, Recent
-Payments (moved out of Overview into its own section here).
-
-Two new Overviews, real data only:
-
-HR Overview: staff headcount by role, leave request summary, payroll summary. HONEST
-GAP: public.staff_attendance has zero rows anywhere - show "not yet in use," never a
-fabricated percentage.
-
-Finance Overview: fee collection (collected/pending/overdue), revenue vs expense vs
-budget, purchase-order pipeline by status, EMI plans active, pending waivers count.
-
-Also:
-1. Waiver disbursement: waiver_requests_screen.dart needs a "Disburse" action on
-   approved-but-not-yet-disbursed requests - reduce invoice.amount_due by
-   requested_amount, set disbursed_at = now(). Only show when status='approved' AND
-   disbursed_at IS NULL.
-2. GST invoice generation (ReceiptGenerator.generateGstInvoiceAndUpload, already
-   built) needs a real trigger point in Fee Management or an invoice detail view.
-
-Verify with real clicks.
-```
-
-## Prompt 4 - Teacher: targeting fixes
-
-```
-Two fixes for Teacher, once new screens are wired in:
-
-1. Add class_id targeting to Announcements - a teacher should be able to pick "just
-   my class" instead of always school-wide. Column already exists, unused so far.
-
-2. Filter Messages' compose recipient list, for teachers specifically, to students in
-   classes they actually teach (via scheduling.timetable), not the full school.
-```
-
-## Prompt 5 - Parent: message restriction + the real Razorpay gap
-
-```
-Three items for Parent:
-
-1. Restrict Parent's Messages compose list to ONLY: the class teacher of their linked
-   child(ren), Principal, and Admin - not the full staff list.
-
-2. REAL BACKEND VERIFICATION NEEDED - check supabase/functions/ directly for whether
-   a Razorpay ORDER-CREATION endpoint exists, separate from the existing payment
-   webhook. If it doesn't exist, this needs to be built before "Pay Online" (currently
-   deliberately disabled) can work: a Supabase Edge Function creating a real Razorpay
-   order, returning order_id, then the app needs razorpay_flutter wired to open
-   checkout with that real order. The existing webhook must remain the actual source
-   of truth for marking an invoice paid - never trust a client-side success callback.
-
-3. EMI/Financing screen (admin-facing) needs to show payment_plans with
-   status='requested' as a distinct "Parent Requests" section with Approve/Reject -
-   parallel to waiver approval. This is what makes Parent's "Request EMI" go anywhere.
-
-Report real, verified results.
-```
+> **Before publishing this section**: these are real accounts on a live Supabase project with real data behind them. If this repo is public, anyone with these credentials can log in and interact with the actual database — not a sandbox copy. Either keep this repo private, move this table to a `.gitignore`d file and share it separately, or reset these passwords to values you're comfortable putting in a public file.
