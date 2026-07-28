@@ -153,7 +153,20 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                                 ),
                               ),
                               const SizedBox(height: 24),
-                              Text('Quick Links', style: Theme.of(context).textTheme.titleMedium),
+                              Text(
+                                'Quick Links',
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black.withOpacity(0.4),
+                                          offset: const Offset(0, 1),
+                                          blurRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                              ),
                               const SizedBox(height: 10),
                               _QuickLinkTile(icon: Icons.calendar_today_outlined, label: 'Timetable', onTap: () => context.go('/parent/schedule')),
                               const SizedBox(height: 8),

@@ -5,6 +5,10 @@ nd a new entry when you finish a task. Don't remove anything from the existing f
 
 ---
 
+## [2026-07-28] Inline Sort Dropdown inside SearchFilterBar and Improve Quick Links Visibility
+- Refactored `SearchFilterBar` to place the sorting dropdown and clear button inline inside the search `TextField`'s `suffixIcon` (styled with a rounded border and `Icons.tune_outlined` icon) for a more compact and premium filter look.
+- Improved contrast and readability of the "Quick Links" text on the Parent Overview dashboard by coloring it white and adding a subtle text shadow.
+
 ## [2026-07-28] Fix Database Schema Mismatches, Parent Overview Layout, and Fees Loading Crashes
 - Fixed a `PostgrestException` crash on the HR Overview screen by pointing the `leave_requests` query to the correct `public` schema instead of `finance`.
 - Fixed the Parent Overview dashboard's attendance circle layout: modified `ProgressRing` to scale text size dynamically with the ring's diameter to prevent layout overflow, and matched overview card heights symmetrically (height 110).

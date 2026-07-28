@@ -222,6 +222,8 @@ bonus, not a requirement — don't rely on it being in sync with this file.
 - Fixed the parent Fees screen crash (null check operator on null `_data`) by correcting page load trigger condition `if (_loading && _data == null)` to `if (!_loading && _data == null)` in `parent_fees_screen.dart`.
 - Fixed the Messages screen crash by resolving student classes via the `academic.class_roster` junction mapping instead of querying a non-existent `students.class_id` column in `messages_screen.dart`.
 - Redesigned and improved parent Overview dashboard layout: modified `ProgressRing` to scale label and subtitle text sizes dynamically to prevent layout clipping and boundary overflow, and structured overview cards to have matched symmetric heights (height 110).
+- Refactored `SearchFilterBar` to place clear search and sort options inline inside the search text field's `suffixIcon` as a compact chip dropdown (using `Icons.tune_outlined`), cleaning up layout across all searchable modules.
+- Enhanced contrast and visual visibility of the parent dashboard "Quick Links" header label on dark backgrounds by styling it white with a drop shadow.
 - Kept the rewrite rule for client-side routing.
 
 

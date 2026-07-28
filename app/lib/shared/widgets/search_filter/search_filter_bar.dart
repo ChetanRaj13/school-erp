@@ -35,6 +35,9 @@ class SearchFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showClearButton = showClearSearch && (searchQuery?.isNotEmpty ?? false) && onSearch != null;
+    final hasSorts = sorts != null && sorts!.isNotEmpty;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -47,49 +50,68 @@ class SearchFilterBar extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    hintText: hintText,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(AppRadii.button),
-                      borderSide: BorderSide(color: AppColors.glassBorder),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(AppRadii.button),
-                      borderSide: BorderSide(color: AppColors.primary, width: 2),
-                    ),
-                  ),
-                  onChanged: onSearch,
-                  controller: searchQuery != null && onSearch != null
-                      ? TextEditingController(text: searchQuery)
-                      : null,
-                ),
+          TextField(
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: hintText,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadii.button),
+                borderSide: BorderSide(color: AppColors.glassBorder),
               ),
-              if (showClearSearch && (searchQuery?.isNotEmpty ?? false) && onSearch != null)
-                SizedBox(width: 8),
-              if (showClearSearch && (searchQuery?.isNotEmpty ?? false) && onSearch != null)
-                IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    onSearch?.call('');
-                  },
-                  splashRadius: 24,
-                ),
-            ],
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadii.button),
+                borderSide: BorderSide(color: AppColors.primary, width: 2),
+              ),
+              suffixIcon: (showClearButton || hasSorts)
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (showClearButton)
+                          IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () => onSearch?.call(''),
+                            splashRadius: 20,
+                          ),
+                        if (hasSorts) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: AppColors.glassFill,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.glassBorder),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<SortOption>(
+                                value: sorts!.firstWhere((s) => s.value == currentSortValue, orElse: () => sorts!.first),
+                                items: sorts!.map((sort) => DropdownMenuItem(
+                                  value: sort,
+                                  child: Text(sort.label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                )).toList(),
+                                onChanged: (value) => onSortSelected?.call(value!),
+                                style: TextStyle(color: AppColors.textPrimary),
+                                icon: const Icon(Icons.tune_outlined, size: 16, color: AppColors.primary),
+                                dense: true,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    )
+                  : null,
+            ),
+            onChanged: onSearch,
+            controller: searchQuery != null && onSearch != null
+                ? TextEditingController(text: searchQuery)
+                : null,
           ),
-          const SizedBox(height: 8),
           // Filter dropdowns
-          if (filterGroups != null && filterGroups!.isNotEmpty) ..._buildFilterRow(context, filterGroups!),
-          // Sort dropdown
-          if (sorts != null && sorts!.isNotEmpty) ...[
-            _SortDropdown(
-              sorts: sorts!,
-              current: currentSortValue,
-              onSelected: onSortSelected,
+          if (filterGroups != null && filterGroups!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: _buildFilterRow(context, filterGroups!),
             ),
           ],
         ],
