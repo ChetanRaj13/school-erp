@@ -228,6 +228,7 @@ bonus, not a requirement — don't rely on it being in sync with this file.
 - Optimized Vercel build parameters in `vercel.json`: enabled shallow clones (`--depth 1`) to prevent heavy clones/timeouts, wrapped `--dart-define` environment variable configurations in escaped double quotes to safeguard shell parsing against empty/special characters, and prepended a `flutter clean` phase to ensure compile caches are clear.
 - Fixed compiler crashes during release builds on constrained Vercel container instances by exporting `DART_VM_OPTIONS="--max-old-space-size=2560"` (forces aggressive garbage collection inside the Dart compiler VM).
 - Targeted a single, optimized build configuration using `--web-renderer canvakit` inside `vercel.json`'s buildCommand. This eliminates compiling multiple fallback renderers (halving memory and compiler time) while keeping premium frosted-glass filter effects active.
+- Delegated the Vercel `buildCommand` to a standalone shell script ([build.sh](file:///e:/PROJECTS/school%20erp/school-erp/build.sh)) to resolve Vercel's schema validation error stating that `buildCommand` must not exceed 256 characters (the previous inline shell command was 283 characters).
 - Kept the rewrite rule for client-side routing.
 
 

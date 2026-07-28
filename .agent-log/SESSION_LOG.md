@@ -5,6 +5,9 @@ nd a new entry when you finish a task. Don't remove anything from the existing f
 
 ---
 
+## [2026-07-28] Delegate Vercel buildCommand to build.sh script
+Created `build.sh` in the project root containing the memory limit configurations and target CanvasKit compilation parameters. Pointed the Vercel project `buildCommand` directly to `bash build.sh` to resolve Vercel's schema validation error stating that `buildCommand` cannot exceed 256 characters (the previous inline shell command was 283 characters).
+
 ## [2026-07-28] Add Dart VM Memory Limits and Target Single CanvasKit Web Renderer for Vercel Builds
 - Configured Vercel build script (`vercel.json`) to export `DART_VM_OPTIONS="--max-old-space-size=2560"`. This restricts the compiler's maximum heap memory and triggers aggressive garbage collection, preventing Dart VM out-of-memory (OOM) compilation crashes on Vercel's free-tier containers.
 - Specified `--web-renderer canvakit` in the build command. This compiles only the CanvasKit renderer (preserving the premium nature matte glassmorphic blurs) instead of compiling both HTML and CanvasKit fallbacks, effectively halving the compiler's memory usage and compilation time.
