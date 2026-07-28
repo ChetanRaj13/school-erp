@@ -41,6 +41,74 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <!-- Razorpay helper: called from Dart via js.context.callMethod -->
+  <script>
+    function __openRazorpayCheckout(opts) {
+      console.log('__openRazorpayCheckout received opts:', opts);
+
+      function loadScript(src) {
+        return new Promise(function(resolve) {
+          if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
+          var s = document.createElement('script');
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = resolve;
+          document.head.appendChild(s);
+        });
+      }
+
+      loadScript('https://checkout.razorpay.com/v1/checkout.js').then(function() {
+        if (typeof Razorpay === 'undefined') {
+          if (window.onRazorpayError) window.onRazorpayError(-1, 'Razorpay SDK not available');
+          return;
+        }
+
+        var keyVal = '';
+        if (opts && typeof opts.key !== 'undefined') keyVal = opts.key;
+        else if (opts && opts['key']) keyVal = opts['key'];
+
+        if (!keyVal || keyVal.trim() === '') {
+          if (window._onRazorpayError) {
+            window._onRazorpayError(-1, 'No Razorpay key configured - payment cannot proceed');
+          }
+          return;
+        }
+
+        var rzp = new Razorpay({
+          key: keyVal,
+          amount: opts && typeof opts.amount !== 'undefined' ? opts.amount : 0,
+          name: opts && opts.name ? opts.name : 'School ERP — Fee Payment',
+          order_id: opts && opts.orderId ? opts.orderId : '',
+          description: opts && opts.description ? opts.description : 'Fee payment',
+          handler: function(response) {
+            if (window._onRazorpaySuccess) {
+              window._onRazorpaySuccess(
+                response.razorpay_payment_id || '',
+                response.razorpay_order_id || '',
+                response.razorpay_signature || ''
+              );
+            }
+          },
+          prefill: opts && opts.prefill ? opts.prefill : {},
+          theme: opts && opts.theme ? opts.theme : {}
+        });
+
+        rzp.on('payment.failed', function(response) {
+          if (window._onRazorpayError) {
+            var err = response.error || {};
+            window._onRazorpayError(err.code || 100, err.description || 'Payment failed');
+          }
+        });
+
+        rzp.on('modal.ondismiss', function() {
+          if (window._onRazorpayDismiss) window._onRazorpayDismiss();
+        });
+
+        rzp.open();
+      });
+    }
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

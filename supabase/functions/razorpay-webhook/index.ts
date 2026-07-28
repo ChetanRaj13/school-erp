@@ -210,35 +210,21 @@ Deno.serve(async (req) => {
   // A failed payment is recorded for the audit trail but must NOT touch
   // amount_paid.
   if (status === 'success') {
-    // Read-modify-write increment. NOTE: this is not atomic — two captured
-    // webhooks for the same invoice arriving concurrently could race and lose
-    // an increment. For production, move this into a Postgres function/trigger
-    // (amount_paid = amount_paid + excluded) called via rpc so the DB serializes
-    // it. Left as read-modify-write here to avoid altering the live schema
-    // without approval.
-    const { data: invoice, error: invErr } = await supabase
-      .from('invoices')
-      .select('amount_paid')
-      .eq('id', invoiceId)
-      .maybeSingle();
-    if (invErr || !invoice) {
+    // Atomic increment via Postgres RPC — replaces the previous read-modify-write
+    // pattern which had a race condition (two concurrent webhooks could lose one
+    // increment). The function finance.increment_invoice_paid uses
+    // UPDATE SET amount_paid = amount_paid + p_amount, which Postgres serializes
+    // at the row level.
+    const { error: updateErr } = await supabase.rpc('increment_invoice_paid', {
+      p_invoice_id: invoiceId,
+      p_amount: amountRupees,
+    });
+    if (updateErr) {
       // Payment is already recorded; surface the invoice-update problem so it
       // can be reconciled rather than lost.
-      console.error('invoice not found for amount_paid update', { invoiceId, invErr });
+      console.error('amount_paid increment failed', updateErr);
       return json(
-        { received: true, payment_id: inserted.id, warning: 'payment recorded but invoice not updated' },
-        200,
-      );
-    }
-    const newAmountPaid = Number(invoice.amount_paid) + amountRupees;
-    const { error: updateErr } = await supabase
-      .from('invoices')
-      .update({ amount_paid: newAmountPaid })
-      .eq('id', invoiceId);
-    if (updateErr) {
-      console.error('amount_paid update failed', updateErr);
-      return json(
-        { received: true, payment_id: inserted.id, warning: 'payment recorded but amount_paid update failed' },
+        { received: true, payment_id: inserted.id, warning: 'payment recorded but amount_paid increment failed' },
         200,
       );
     }

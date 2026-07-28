@@ -76,8 +76,12 @@ class _OfflinePaymentScreenState extends ConsumerState<OfflinePaymentScreen> {
           .select('id, created_at')
           .single();
 
-      final newAmountPaid = (invoice['amount_paid'] as num).toDouble() + amount;
-      await client.schema('finance').from('invoices').update({'amount_paid': newAmountPaid}).eq('id', invoice['id']);
+      // Atomic increment via the Postgres RPC function — replaces the previous
+      // read-modify-write pattern that had a race condition.
+      await client.rpc('increment_invoice_paid', params: {
+        'p_invoice_id': invoice['id'],
+        'p_amount': amount,
+      });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

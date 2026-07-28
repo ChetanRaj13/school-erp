@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
@@ -8,12 +9,17 @@ import '../../../core/auth/user_role.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import '../../../shared/widgets/cinematic_hero_header.dart';
+import '../../../shared/widgets/apple_style_dock.dart';
+import '../../../shared/widgets/border_trail_card.dart';
 
-/// Parent front page (the shell sidebar's "Overview" item). Kept to genuinely
-/// important-at-a-glance info only: per-child fees + attendance, with a child selector
-/// when more than one child is linked. The "Scholarships & Waivers" quick-access card
-/// that used to live here has moved into the persistent sidebar (see nav_config.dart +
-/// role_shell.dart). Data logic UNCHANGED (real parent_links-backed queries).
+/// Parent front page (the shell sidebar's "Overview" item).
+///
+/// CHANGE: added a CinematicHeroHeader at the top (static image + subtle Ken
+/// Burns motion + fade-rise text) and a floating AppleStyleDock for quick
+/// nav, matching the new visual direction. Data logic is UNCHANGED — the
+/// same real parent_links-backed queries as before, same GlassCards below
+/// the hero.
 class ParentDashboard extends ConsumerStatefulWidget {
   const ParentDashboard({super.key});
 
@@ -23,6 +29,7 @@ class ParentDashboard extends ConsumerStatefulWidget {
 
 class _ParentDashboardState extends ConsumerState<ParentDashboard> {
   String? _selectedStudentId;
+  bool _isRefreshing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -34,116 +41,164 @@ class _ParentDashboardState extends ConsumerState<ParentDashboard> {
       backgroundColor: Colors.transparent,
       body: WarmBackdrop(
         child: SafeArea(
-          child: childrenAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-            error: (e, _) => Center(child: Text('Error: $e')),
-            data: (children) {
-              if (children.isEmpty) {
-                return _NoChildrenLinkedView(role: role);
-              }
+          child: Stack(
+            children: [
+              childrenAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                error: (e, _) => Center(child: Text('Error: $e')),
+                data: (children) {
+                  if (children.isEmpty) {
+                    return _NoChildrenLinkedView(role: role);
+                  }
 
-              final selected = children.firstWhere((c) => c.studentId == _selectedStudentId, orElse: () => children.first);
+                  final selected = children.firstWhere(
+                    (c) => c.studentId == _selectedStudentId,
+                    orElse: () => children.first,
+                  );
 
-              return CustomScrollView(
-                slivers: [
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                    sliver: SliverToBoxAdapter(
-                      child: Text('Parent Dashboard', style: Theme.of(context).textTheme.headlineMedium),
-                    ),
-                  ),
-                  if (children.length > 1)
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                      sliver: SliverToBoxAdapter(
-                        child: SizedBox(
-                          height: 44,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: children.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 8),
-                            itemBuilder: (context, i) {
-                              final c = children[i];
-                              final isSelected = c.studentId == selected.studentId;
-                              return ChoiceChip(
-                                label: Text(c.fullName),
-                                selected: isSelected,
-                                onSelected: (_) => setState(() => _selectedStudentId = c.studentId),
-                                selectedColor: AppColors.primary,
-                                labelStyle: TextStyle(color: isSelected ? Colors.white : AppColors.textPrimary),
-                                backgroundColor: AppColors.glassFill,
+                  return CustomScrollView(
+                    slivers: [
+                      // NEW: cinematic hero replacing the plain "Parent Dashboard" text header.
+                      SliverToBoxAdapter(
+                        child: CinematicHeroHeader(
+                          headline: "Every step, in one calm place.",
+                          emphasisWords: const ['calm place.'],
+                          subtext:
+                              "Fees, attendance, and everything about ${selected.fullName}'s school day.",
+                          backgroundAsset: 'assets/backgrounds/hero_bg.png',
+                          height: 320,
+                        ),
+                      ),
+                      if (children.length > 1)
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                          sliver: SliverToBoxAdapter(
+                            child: SizedBox(
+                              height: 44,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: children.length,
+                                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                itemBuilder: (context, i) {
+                                  final c = children[i];
+                                  final isSelected = c.studentId == selected.studentId;
+                                  return ChoiceChip(
+                                    label: Text(c.fullName),
+                                    selected: isSelected,
+                                    onSelected: (_) => setState(() => _selectedStudentId = c.studentId),
+                                    selectedColor: AppColors.primary,
+                                    labelStyle: TextStyle(color: isSelected ? Colors.white : AppColors.textPrimary),
+                                    backgroundColor: AppColors.glassFill,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      SliverPadding(
+                        // Extra bottom padding so content clears the floating dock.
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+                        sliver: SliverFillRemaining(
+                          fillOverscroll: true,
+                          hasScrollBody: false,
+                          child: FutureBuilder<_ChildSummary>(
+                            future: _loadChildSummary(client, selected.studentId),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState != ConnectionState.done) {
+                                return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                              }
+                              if (snapshot.hasError) {
+                                return Text('Failed to load: ${snapshot.error}');
+                              }
+                              final s = snapshot.data!;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${selected.fullName} · ${selected.admissionNumber}', style: Theme.of(context).textTheme.titleMedium),
+                                  const SizedBox(height: 16),
+                                  // NEW: wrapped in BorderTrailCard — shows a traveling
+                                  // green trail while a manual refresh is in flight.
+                                  BorderTrailCard(
+                                    isLoading: _isRefreshing,
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: GlassCard(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(children: [
+                                            const Icon(Icons.currency_rupee, color: AppColors.primary),
+                                            const SizedBox(width: 8),
+                                            Text('Fees', style: Theme.of(context).textTheme.titleMedium),
+                                            const Spacer(),
+                                            IconButton(
+                                              icon: const Icon(Icons.refresh, size: 18, color: AppColors.textSecondary),
+                                              onPressed: () async {
+                                                setState(() => _isRefreshing = true);
+                                                await Future.delayed(const Duration(seconds: 2));
+                                                if (mounted) setState(() {});
+                                              },
+                                            ),
+                                          ]),
+                                          const SizedBox(height: 12),
+                                          Text('₹${s.amountDue.toStringAsFixed(0)} due', style: Theme.of(context).textTheme.headlineMedium),
+                                          Text('₹${s.amountPaid.toStringAsFixed(0)} paid so far', style: Theme.of(context).textTheme.bodyMedium),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  GlassCard(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(children: [
+                                          const Icon(Icons.event_available_outlined, color: AppColors.primary),
+                                          const SizedBox(width: 8),
+                                          Text('Attendance', style: Theme.of(context).textTheme.titleMedium),
+                                        ]),
+                                        const SizedBox(height: 12),
+                                        if (s.attendanceRecords.isEmpty)
+                                          const Text('No attendance records yet.')
+                                        else
+                                          ...s.attendanceRecords.map((r) => Padding(
+                                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                                child: Row(children: [
+                                                  Icon(r['status'] == 'present' ? Icons.check_circle_outline : Icons.cancel_outlined,
+                                                      size: 18, color: r['status'] == 'present' ? AppColors.success : AppColors.error),
+                                                  const SizedBox(width: 8),
+                                                  Text('${r['date']} — ${r['status']}'),
+                                                ]),
+                                              )),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               );
                             },
                           ),
                         ),
                       ),
-                    ),
-                  SliverPadding(
-                    padding: const EdgeInsets.all(20),
-                    sliver: SliverFillRemaining(
-                      fillOverscroll: true,
-                      hasScrollBody: false,
-                      child: FutureBuilder<_ChildSummary>(
-                        future: _loadChildSummary(client, selected.studentId),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState != ConnectionState.done) {
-                            return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                          }
-                          if (snapshot.hasError) {
-                            return Text('Failed to load: ${snapshot.error}');
-                          }
-                          final s = snapshot.data!;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${selected.fullName} · ${selected.admissionNumber}', style: Theme.of(context).textTheme.titleMedium),
-                              const SizedBox(height: 16),
-                              GlassCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(children: [const Icon(Icons.currency_rupee, color: AppColors.primary), const SizedBox(width: 8), Text('Fees', style: Theme.of(context).textTheme.titleMedium)]),
-                                    const SizedBox(height: 12),
-                                    Text('₹${s.amountDue.toStringAsFixed(0)} due', style: Theme.of(context).textTheme.headlineMedium),
-                                    Text('₹${s.amountPaid.toStringAsFixed(0)} paid so far', style: Theme.of(context).textTheme.bodyMedium),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              GlassCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(children: [const Icon(Icons.event_available_outlined, color: AppColors.primary), const SizedBox(width: 8), Text('Attendance', style: Theme.of(context).textTheme.titleMedium)]),
-                                    const SizedBox(height: 12),
-                                    if (s.attendanceRecords.isEmpty)
-                                      const Text('No attendance records yet.')
-                                    else
-                                      ...s.attendanceRecords.map((r) => Padding(
-                                            padding: const EdgeInsets.symmetric(vertical: 4),
-                                            child: Row(children: [
-                                              Icon(r['status'] == 'present' ? Icons.check_circle_outline : Icons.cancel_outlined, size: 18, color: r['status'] == 'present' ? AppColors.success : AppColors.error),
-                                              const SizedBox(width: 8),
-                                              Text('${r['date']} — ${r['status']}'),
-                                            ]),
-                                          )),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Use the sidebar to reach scholarships & waivers.',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+                    ],
+                  );
+                },
+              ),
+              // NEW: floating dock — quick nav to the parent's own routes.
+              Positioned(
+                bottom: 16,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: AppleStyleDock(items: [
+                    DockItemData(icon: Icons.home_outlined, label: 'Home', onTap: () => context.go('/parent')),
+                    DockItemData(icon: Icons.currency_rupee, label: 'Fees', onTap: () => context.go('/parent/fees')),
+                    DockItemData(icon: Icons.calendar_today_outlined, label: 'Schedule', onTap: () => context.go('/parent/schedule')),
+                    DockItemData(icon: Icons.notifications_outlined, label: 'Notices', onTap: () => context.go('/parent/notifications')),
+                    DockItemData(icon: Icons.campaign_outlined, label: 'Announcements', onTap: () => context.go('/parent/announcements')),
+                    DockItemData(icon: Icons.chat_bubble_outline, label: 'Messages', onTap: () => context.go('/parent/messages')),
+                  ]),
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -215,25 +215,36 @@ class AdminFinanceOverviewScreen extends ConsumerWidget {
 
   Future<_FinanceOverviewData> _load(SupabaseClient client) async {
     // ── Fee collection from invoices ──
+    // invoices table columns: id, amount_due, amount_paid, due_date
+    // (no 'status' or 'total_amount' column — derive state from these)
     final invoiceRows = await client
         .schema('finance')
         .from('invoices')
-        .select('id, status, amount_due, total_amount');
+        .select('id, amount_due, amount_paid, due_date');
     final invoiceList = List<Map<String, dynamic>>.from(invoiceRows as List);
+    final now = DateTime.now();
 
     double feeCollected = 0;
     double feePending = 0;
     double feeOverdue = 0;
     for (final inv in invoiceList) {
       final amountDue = (inv['amount_due'] as num?)?.toDouble() ?? 0;
-      final totalAmount = (inv['total_amount'] as num?)?.toDouble() ?? 0;
-      final status = inv['status'] as String? ?? '';
-      final collected = totalAmount - amountDue;
-      if (collected > 0) feeCollected += collected;
-      if (status == 'overdue') {
-        feeOverdue += amountDue;
-      } else if (amountDue > 0) {
-        feePending += amountDue;
+      final amountPaid = (inv['amount_paid'] as num?)?.toDouble() ?? 0;
+      final dueDate = inv['due_date'] != null
+          ? DateTime.tryParse(inv['due_date'].toString())
+          : null;
+      final remaining = amountDue - amountPaid;
+
+      // Fully paid → count toward collected
+      if (remaining <= 0) {
+        feeCollected += amountPaid;
+        continue;
+      }
+      // Overdue: due date passed and still unpaid
+      if (dueDate != null && dueDate.isBefore(now)) {
+        feeOverdue += remaining;
+      } else {
+        feePending += remaining;
       }
     }
 
@@ -244,7 +255,8 @@ class AdminFinanceOverviewScreen extends ConsumerWidget {
         .select('id, amount, status');
     final paymentList = List<Map<String, dynamic>>.from(paymentRows as List);
     final totalRevenue = paymentList
-        .where((p) => p['status'] == 'completed')
+        // payment_status enum values: pending, processing, success, failed, refunded
+        .where((p) => p['status'] == 'success')
         .fold<double>(0, (sum, p) => sum + (p['amount'] as num).toDouble());
 
     // ── Expenses from vendor_payments (paid only) ──
@@ -261,10 +273,10 @@ class AdminFinanceOverviewScreen extends ConsumerWidget {
     final budgetRows = await client
         .schema('finance')
         .from('budgets')
-        .select('id, allocated_amount');
+        .select('id, planned_amount');
     final budgetList = List<Map<String, dynamic>>.from(budgetRows as List);
     final totalBudget = budgetList.fold<double>(
-        0, (sum, b) => sum + (b['allocated_amount'] as num).toDouble());
+        0, (sum, b) => sum + (b['planned_amount'] as num).toDouble());
     final budgetRemaining = totalBudget - totalExpenses;
 
     // ── PO pipeline ──
@@ -287,10 +299,10 @@ class AdminFinanceOverviewScreen extends ConsumerWidget {
       }
     }
 
-    // ── EMI plans ──
+    // ── Payment plans (EMI) ──
     final emiRows = await client
         .schema('finance')
-        .from('emi_plans')
+        .from('payment_plans')
         .select('id, status');
     final emiList = List<Map<String, dynamic>>.from(emiRows as List);
     final emiActive = emiList.where((e) => e['status'] == 'active').length;

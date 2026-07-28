@@ -89,7 +89,9 @@
       "Bash(findstr :80012)",
       "Bash(flutter analyze *)",
       "Bash(dart analyze *)",
-      "Bash(flutter pub *)"
+      "Bash(flutter pub *)",
+      "Bash(xargs grep -l \"class.*Notification\")",
+      "Bash(powershell -Command \"Get-ChildItem -Path 'C:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/' -Name | Out-String\")"
     ]
   }
 }

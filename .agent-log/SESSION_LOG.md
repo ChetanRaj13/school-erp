@@ -1,23 +1,68 @@
 # Session Log
 
-This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; append a new entry when you finish a task.
+This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; appe
+nd a new entry when you finish a task. Don't remove anything from the existing file
 
 ---
-- 2026-07-27 (session 3): Migration files placed, Razorpay handler fix, full itemized fee-breakdown UI built.
+
+## [2026-07-28] Budget Dashboard — reused across Admin & Principal
+Extracted `BudgetBreakdownWidget` (shared/widgets/) from Principal `BudgetScreen` to render per-category budget progress rings identically for both roles. Added budget breakdown section to Admin Dashboard inline. Also fixed Finance Overview (`admin_finance_overview_screen.dart`): removed non-existent `invoices.status`/`total_amount` columns, `emi_plans`→`payment_plans`, `allocated_amount`→`planned_amount`, `completed`→`success` payment status. Fixed `dashboard_provider.dart` same issues. Fixed pre-existing parser errors in `admin_dashboard.dart` (missing `)` closing 2 `SliverGrid`s, null-safety, type mismatches). All 5 touched files: dart analyze = 0 errors.
+
+## [2026-07-28] Admin Dashboard Redesign
+Redesigned the admin dashboard into a full executive dashboard with KPI cards, financial charts, and operational widgets. Implemented core/dashboard/dashboard_provider.dart for data aggregation, core/widgets/ for reusable components (KpiCard, LineChart, BarChart, PieChart), and updated features/dashboard/admin/admin_dashboard.dart with comprehensive layout including 11 KPI cards, 5 charts (fee trend, expense breakdown, payment distribution, budget utilization, student distribution), and 6 widget sections (approval queue, system alerts, recent activities, fee deadlines, top defaulters, quick actions).
+
+ 2026-07-28 — Principal Dashboard Comprehensive Review (Prompt 7) - Detailed Update:
+    - Performed comprehensive audit covering all checklist items per Prompt 7 requirements.
+    - Fixed budget_provider.dart with Supabase API corrections (order ascending parameter, eq method placeme
+nt), DateTime arithmetic fixes, super constructor ordering, null safety improvements.
+    - Verified principal_dashboard.dart clean, budget_screen.dart working after git restore.
+    - Documented remaining recommendations in this summary for future implementation.
+  EOF
+  )
+(No output)
+
+2026-07-28 — Budget Module Advanced Features completed (Prompt 6):
+  - Implemented comprehensive budget module enhancements including financial audit trail, budget notes, vari
+ance analysis, multi-year comparison, time-period toggles, forecasting, and export functionality (PDF/CSV).
+  - Created database migration 0015_budget_audit_and_notes.sql adding budget_audit_trail and budget_notes ta
+bles with automated audit triggers.
+  - Rewrote budget_screen.dart with full feature set including fiscal year selector, time period toggle, enh
+anced KPIs, variance charts, forecast modeling, note management, and audit trail viewing.
+  - Created budget provider (Riverpod StateNotifier) for centralized state management of budget data.
+  - Added export utilities (PDF and CSV/Excel) to core/utils/budget_exporter.dart.
+  - Added intl package dependency for date formatting.
+  - Files modified: budget_screen.dart, budget_provider.dart, budget_models.dart, budget_exporter.dart, migr
+ation 0015_budget_audit_and_notes.sql, plus pubspec.yaml update.
+
+- 2026-07-27 (session 3): Migration files placed, Razorpay handler fix, full itemized fee-breakdown UI built
+.
   MIGRATIONS: Copied 0002_finance_schema.sql (full replacement for stub), 0013_baseline_reconciliation.sql,
   0014_invoice_line_items.sql from Downloads into supabase/migrations/. Deleted dead 0004_staff_schema.sql
-  (created a `staff` schema that doesn't exist live). Deleted misplaced app/supabase/migrations/0009_auth_linkage.sql
+  (created a `staff` schema that doesn't exist live). Deleted misplaced app/supabase/migrations/0009_auth_li
+nkage.sql
   (redundant with 0013 which already includes auth_user_id on students/staff). Cleaned 0001 — removed
-  bare students/staff CREATE TABLE blocks that would collide with 0013. Apply order: 0001→0002→0003→...→0012→0013→0014.
+  bare students/staff CREATE TABLE blocks that would collide with 0013. Apply order: 0001→0002→0003→...→0012
+→0013→0014.
   RAZORPAY: Moved the success handler from rzp['handler'] = ... (post-construction) into the options object
-  passed to Razorpay constructor — the SDK reads it during instantiation, not after. The core .callMethod('newInstance')
+  passed to Razorpay constructor — the SDK reads it during instantiation, not after. The core .callMethod('n
+ewInstance')
   fix from session 2 was preserved. PARENT_FEES_SCREEN: Complete rewrite with itemized fee breakdown UI:
-  student identity block (admission number, name, class from academic.classes.name, roll_no from class_roster),
+  student identity block (admission number, name, class from academic.classes.name, roll_no from class_roste
+r),
   per-fee-head table with demo placeholder heads (sum ₹57,000), fallback to invoice's single amount when no
-  invoice_line_items rows exist, financial summary (scholarship from waiver_requests, refunds from payments.status,
-  outstanding), full payment history table with TX ID, method badge, status, datetime, and download receipt button.
-  Payment query expanded to fetch ALL student payments (not just unpaid invoice payments) so refunds show in history.
-- 2026-07-27 : Razorpay web crash fix completed. Fixed razorpay_web.dart by replacing `.newInstance([options])` with `.callMethod('newInstance', [options])` to resolve NoSuchMethodError during checkout invocation. Updated parent_fees_screen.dart to cleanly call openRazorpayCheckout without broken #if WEB guards; analyzer now reports 0 issues. Mobile payment flow remains stubbed (shows message) awaiting full razorpay_flutter integration. Fee breakdown feature groundwork started but not yet implemented. Also copied context-handoff-brief.md to repo root; verified 0014_invoice_line_items.sql in Downloads. Missing migration files 0002 and 0013 not found — awaiting user input to proceed with migration sequencing.
+  invoice_line_items rows exist, financial summary (scholarship from waiver_requests, refunds from payments.
+status,
+  outstanding), full payment history table with TX ID, method badge, status, datetime, and download receipt
+button.
+  Payment query expanded to fetch ALL student payments (not just unpaid invoice payments) so refunds show in
+ history.
+- 2026-07-27 : Razorpay web crash fix completed. Fixed razorpay_web.dart by replacing `.newInstance([options
+])` with `.callMethod('newInstance', [options])` to resolve NoSuchMethodError during checkout invocation. Up
+dated parent_fees_screen.dart to cleanly call openRazorpayCheckout without broken #if WEB guards; analyzer n
+ow reports 0 issues. Mobile payment flow remains stubbed (shows message) awaiting full razorpay_flutter inte
+gration. Fee breakdown feature groundwork started but not yet implemented. Also copied context-handoff-brief
+.md to repo root; verified 0014_invoice_line_items.sql in Downloads. Missing migration files 0002 and 0013 n
+ot found — awaiting user input to proceed with migration sequencing.
 
 - 2026-07-25 : Parent Messages restriction + EMI Parent Requests + backend verification.
   1) messages_screen.dart: Parent compose restricts recipients to class teachers of
@@ -57,11 +102,18 @@ This file tracks recent changes and context for AI agents. Read the top 2 entrie
   9) app_router.dart: registered /admin/hr-overview, /admin/finance-overview,
      /admin/approvals/hr, /admin/approvals/finance routes.
 - 2026-07-27 : Razorpay web crash fix and fee breakdown foundation.
-  1) Fixed razorpay_web.dart: replaced `.newInstance([options])` with `.callMethod('newInstance', [options])` to resolve NoSuchMethodError on web checkout.
-  2) Updated parent_fees_screen.dart: removed broken #if WEB guards, simplified to use razorpay.openRazorpayCheckout directly; added platform stub for mobile (shows message).
-  3) Prepared groundwork for itemized fee breakdown: extended data model queries to include invoice_line_items, student class info, waivers, and refunds (implementation pending).
-  4) Migration notes: context-handoff-brief.md copied to repo root; 0014_invoice_line_items.sql verified in supabase/migrations/. Missing migration files (0002_finance_schema.sql, 0013_baseline_reconciliation.sql) not found in Downloads - awaiting user input.
-  5) Known landmines in migrations: 0004_staff_schema.sql is dead (creates non-existent staff schema); app/supabase/migrations/0009_auth_linkage.sql is in wrong location; 001_shared_reference_tables.sql contains CREATE TABLE students/staff that will conflict with future baseline reconciliation.
+  1) Fixed razorpay_web.dart: replaced `.newInstance([options])` with `.callMethod('newInstance', [options])
+` to resolve NoSuchMethodError on web checkout.
+  2) Updated parent_fees_screen.dart: removed broken #if WEB guards, simplified to use razorpay.openRazorpay
+Checkout directly; added platform stub for mobile (shows message).
+  3) Prepared groundwork for itemized fee breakdown: extended data model queries to include invoice_line_ite
+ms, student class info, waivers, and refunds (implementation pending).
+  4) Migration notes: context-handoff-brief.md copied to repo root; 0014_invoice_line_items.sql verified in
+supabase/migrations/. Missing migration files (0002_finance_schema.sql, 0013_baseline_reconciliation.sql) no
+t found in Downloads - awaiting user input.
+  5) Known landmines in migrations: 0004_staff_schema.sql is dead (creates non-existent staff schema); app/s
+upabase/migrations/0009_auth_linkage.sql is in wrong location; 001_shared_reference_tables.sql contains CREA
+TE TABLE students/staff that will conflict with future baseline reconciliation.
   ValueKey(_loadGeneration) so it rebuilds on each send. Added debugPrint
   logging around bulk insert. Changed compose sheet from single-select dropdown
   to multi-select ChoiceChip Wrap for bulk messaging. _send now accepts
@@ -404,7 +456,19 @@ This file tracks recent changes and context for AI agents. Read the top 2 entrie
   `services/predictive-engine/scripts/seed_manifest.json`) — run
   `cleanup_synthetic_absences.py` before final submission to remove them. (glm-5.2-free)
 
-- 2026-07-23 : DOCUMENT EXTRACTION — E2E VERIFIED END-TO-END: Killed orphaned uvicorn PID 13376 on port 8003 from prior interrupted session. Confirmed `documents.admission_forms` existed live with 0 rows (clean state — nothing committed during the interrupted run). Confirmed `/documents/extract` and `/documents/commit` are real implemented endpoints in `main.py` (not stubs). Started server fresh on port 8003. Generated synthetic admission-form JPEG (Arjun Sharma / ADM-2024-0042 / 9876543210). POST /documents/extract → 200, all 7 fields extracted at confidence 1.0 by `nvidia/nemotron-nano-12b-v2-vl:free`, `form_id=d6c766fe-…`, `status=pending_review`. POST /documents/commit with admin-reviewed fields → 200, `student_id=a9130064-…` created in `public.students`, form marked `status=verified`. Direct DB query confirmed: `documents.admission_forms` has 1 row (verified, linked student_id), `public.students` has the new row (full_name=Arjun Sharma, admission_number=ADM-2024-0042, school_id=demo). Human-in-the-loop design confirmed: /extract never writes to students, /commit requires explicit admin fields. GOTCHA: PowerShell `Invoke-WebRequest` fails in NonInteractive mode — use curl (Git Bash) for all Supabase REST checks. Test row is LIVE in DB (not cleaned up) — serves as demo seed data. (Opus 4.8)
+- 2026-07-23 : DOCUMENT EXTRACTION — E2E VERIFIED END-TO-END: Killed orphaned uvicorn PID 13376 on port 8003
+ from prior interrupted session. Confirmed `documents.admission_forms` existed live with 0 rows (clean state
+ — nothing committed during the interrupted run). Confirmed `/documents/extract` and `/documents/commit` are
+ real implemented endpoints in `main.py` (not stubs). Started server fresh on port 8003. Generated synthetic
+ admission-form JPEG (Arjun Sharma / ADM-2024-0042 / 9876543210). POST /documents/extract → 200, all 7 field
+s extracted at confidence 1.0 by `nvidia/nemotron-nano-12b-v2-vl:free`, `form_id=d6c766fe-…`, `status=pendin
+g_review`. POST /documents/commit with admin-reviewed fields → 200, `student_id=a9130064-…` created in `publ
+ic.students`, form marked `status=verified`. Direct DB query confirmed: `documents.admission_forms` has 1 ro
+w (verified, linked student_id), `public.students` has the new row (full_name=Arjun Sharma, admission_number
+=ADM-2024-0042, school_id=demo). Human-in-the-loop design confirmed: /extract never writes to students, /com
+mit requires explicit admin fields. GOTCHA: PowerShell `Invoke-WebRequest` fails in NonInteractive mode — us
+e curl (Git Bash) for all Supabase REST checks. Test row is LIVE in DB (not cleaned up) — serves as demo see
+d data. (Opus 4.8)
 
 - 2026-07-23 : DOCUMENT EXTRACTION (TASK2.txt) — INVENTORY + PLANNING ONLY, NO CODE
 WRITTEN, session ended on context/token limits before build started. Next agent: do NOT
@@ -468,24 +532,135 @@ TASK LIST DEFINED, NONE STARTED (0/3 done):
 Session ended here on context/token limits — no code was written yet, only inventory
 and this task list. Next agent should resolve the two open decisions above FIRST (or ask
 the user), then start on task 1. (grok-4.5)
-- 2026-07-23 : SUBSTITUTE RECOMMENDATION BUILT + E2E VERIFIED: Added `POST /substitutes/recommend` (read-only, human-in-the-loop) + `POST /substitutes/commit` to `services/timetable-solver/main.py`. Filtering/ranking problem, NOT an OR-Tools re-solve. Recommend ranks candidates: free at slot (no `scheduling.timetable` row + no non-cancelled `scheduling.substitutions` covering them at that date+slot) → qualified for subject name (via `teacher_subjects`) first → lighter weekly load → more spare vs max_periods; each candidate carries a plain-English `reason` string. Commit writes ONE row the admin explicitly picks (status=`confirmed`), never auto-picks top — matches AGENTS.md human-in-the-loop rule. Same patterns as /generate+/commit: service-role key, `_safe_fetch`, HTTPException style. VERIFIED against real data: Suresh absent 2026-07-27 Mon slot 2 (8-A Mathematics) → /recommend returned Anita (rank 1, not qualified for Maths, 16/18 load) as only free candidate; /commit wrote row `57212eb2-…` → DB-confirmed (correct IDs, status=confirmed, date=2026-07-27, slot_id=2). Guards tested: re-commit same absence → 409; Tue date vs Mon slot → 400; Sun (weekend) → 400; re-/recommend after commit → `already_covered:true` + Anita excluded as busy → 0 candidates. Test row cleaned up (TRUNCATE-free DELETE). Extend `timetable-test-harness.html` with substitute panel (dark style, ranked rows with QUALIFIED badges + per-candidate Commit buttons). GOTCHAS: (a) live `scheduling.substitutions` schema has 8 cols (id, original_teacher_id, substitute_teacher_id nullable, date, slot_id integer, class_id, status default 'proposed' check in proposed/confirmed/cancelled, created_at) — matches migration 0008, no surprises. (b) RLS on substitutions is REAL role-scoped (`auth.role()='authenticated'`), same as the other 5 scheduling tables — not a USING(true) stub. (c) Qualification match is by subject NAME (solver's convention) — a teacher qualified for "Mathematics" in 9-A can sub "Mathematics" in 8-A; if name-per-class scoping is ever needed, switch to subject_id match. (d) Real data has NO qualified sub for English (only Ravi has it) — recommend still returns unqualified-but-free candidates with clear reason, which is correct (admin may override). (e) `npx supabase db query` hit a transient Cloudflare 524 once on the DELETE — retry succeeded; not a code issue. PAUSING here per task instructions — Task 2 (deployment inventory: Dockerfile build check, TIMETABLE_SOLVER_URL in .env, OMR+Razorpay same) NOT started, awaiting user confirmation. (grok-4.5)
+- 2026-07-23 : SUBSTITUTE RECOMMENDATION BUILT + E2E VERIFIED: Added `POST /substitutes/recommend` (read-onl
+y, human-in-the-loop) + `POST /substitutes/commit` to `services/timetable-solver/main.py`. Filtering/ranking
+ problem, NOT an OR-Tools re-solve. Recommend ranks candidates: free at slot (no `scheduling.timetable` row
++ no non-cancelled `scheduling.substitutions` covering them at that date+slot) → qualified for subject name
+(via `teacher_subjects`) first → lighter weekly load → more spare vs max_periods; each candidate carries a p
+lain-English `reason` string. Commit writes ONE row the admin explicitly picks (status=`confirmed`), never a
+uto-picks top — matches AGENTS.md human-in-the-loop rule. Same patterns as /generate+/commit: service-role k
+ey, `_safe_fetch`, HTTPException style. VERIFIED against real data: Suresh absent 2026-07-27 Mon slot 2 (8-A
+ Mathematics) → /recommend returned Anita (rank 1, not qualified for Maths, 16/18 load) as only free candida
+te; /commit wrote row `57212eb2-…` → DB-confirmed (correct IDs, status=confirmed, date=2026-07-27, slot_id=2
+). Guards tested: re-commit same absence → 409; Tue date vs Mon slot → 400; Sun (weekend) → 400; re-/recomme
+nd after commit → `already_covered:true` + Anita excluded as busy → 0 candidates. Test row cleaned up (TRUNC
+ATE-free DELETE). Extend `timetable-test-harness.html` with substitute panel (dark style, ranked rows with Q
+UALIFIED badges + per-candidate Commit buttons). GOTCHAS: (a) live `scheduling.substitutions` schema has 8 c
+ols (id, original_teacher_id, substitute_teacher_id nullable, date, slot_id integer, class_id, status defaul
+t 'proposed' check in proposed/confirmed/cancelled, created_at) — matches migration 0008, no surprises. (b)
+RLS on substitutions is REAL role-scoped (`auth.role()='authenticated'`), same as the other 5 scheduling tab
+les — not a USING(true) stub. (c) Qualification match is by subject NAME (solver's convention) — a teacher q
+ualified for "Mathematics" in 9-A can sub "Mathematics" in 8-A; if name-per-class scoping is ever needed, sw
+itch to subject_id match. (d) Real data has NO qualified sub for English (only Ravi has it) — recommend stil
+l returns unqualified-but-free candidates with clear reason, which is correct (admin may override). (e) `npx
+ supabase db query` hit a transient Cloudflare 524 once on the DELETE — retry succeeded; not a code issue. P
+AUSING here per task instructions — Task 2 (deployment inventory: Dockerfile build check, TIMETABLE_SOLVER_U
+RL in .env, OMR+Razorpay same) NOT started, awaiting user confirmation. (grok-4.5)
 
-- 2026-07-22 : TIMETABLE SOLVER — VERIFIED END-TO-END (happy path + infeasibility + commit all confirmed). The prior "service_role lacked SELECT on academic.subjects" diagnosis was WRONG/stale: that grant is fine now; the real 500 was a code crash in `solver.py` (`model.NewIntVar(0,20)` missing the required `name` arg, plus a float `avg_ppw` fed into CP-SAT which rejects float coeffs). Fixed 4 bugs total: (1) solver soft-constraint block called `model.Minimize()` INSIDE loops — CP-SAT *replaces* the objective each call, so only the last term survived; rewrote to accumulate all penalty terms into one list + single `Minimize(sum(...))`, kept even-spread math in integers. (2) `main.py` loaded staff with `.in_("role",["teacher","principal"])` which SILENTLY DROPPED "Anita Accountant" (role=`admin`) who is the only qualified teacher for 5 subjects (Hindi 8-A, PE 8-A, Biology/Chemistry/Hindi 9-A = 16 periods) → timetable came back missing those subjects but still reported "success". Fixed: load ALL staff; teaching duty is defined by `scheduling.teacher_subjects`, NOT app role. (3) solver silently skipped the period-count constraint for any subject with no candidates (`if z_subj:`) — now collects those and returns a specific infeasibility instead ("never fails silently" restored). (4) `/generate` output didn't carry `subject_id`/`slot_id` that `/commit` requires (timetable.subject_id + slot_id are NOT NULL; output only had `subject` name + `day`/`period`) → /commit would KeyError. Fixed: main.py now passes a `(day,period)->slot_id` map + subject ids through; solver emits `subject_id` + `slot_id` on every row; cleaned up /commit (removed dead `auth.users` placeholder, real `reviewed_at` UTC timestamp, missing-field guard → 400). VERIFIED: /generate → 200, 45 assignments (8-A=23, 9-A=22, exact demand), ZERO teacher/class/room clashes (checked in DB via GROUP BY HAVING, not just API). /commit → 45 rows in `scheduling.timetable`, all `is_reviewed=true` + `reviewed_at` set + `reviewed_by=null`. Infeasibility test RUN: set Suresh max_periods=1 → HTTP 422 `{"conflicts":["Teacher 'Suresh Teacher' ... requires 18 periods/week but max_periods=1"]}` (specific, readable); restored max_periods=20 afterward, /generate back to 200. Built throwaway `services/timetable-solver/timetable-test-harness.html` (dark glassmorphic like OMR harness: Generate button renders per-class weekly grid tables, Commit button posts result back, renders 422 conflicts as a list). GOTCHAS: (a) `/commit` is INSERT-ONLY — no clear; the 45 verified rows are LEFT in `scheduling.timetable` as clean demo/seed data for the Flutter timetable view. Re-running commit will DUPLICATE rows and create false clashes — TRUNCATE `scheduling.timetable` before any re-commit. (b) FLUTTER TEAMMATE: read the timetable by joining `scheduling.timetable` → `scheduling.time_slots`(slot_id, gives day+period_number+start/end time) → `academic.subjects`(subject_id) → `public.staff`(teacher_id) → `scheduling.rooms`(room_id, nullable). slot ids are DB-ordered (mon=1..6, tue=7..12, ...). (c) solver `num_periods` is hardcoded to 6 in main.py `_load_constraints`; time_slots seed has exactly mon-fri × 6 = 30 slots. (d) `lsof` is NOT available in this env's bash — kill the port-8003 process via PowerShell `Get-NetTCPConnection -LocalPort 8003 | Stop-Process`. (Opus 4.8)
+- 2026-07-22 : TIMETABLE SOLVER — VERIFIED END-TO-END (happy path + infeasibility + commit all confirmed). T
+he prior "service_role lacked SELECT on academic.subjects" diagnosis was WRONG/stale: that grant is fine now
+; the real 500 was a code crash in `solver.py` (`model.NewIntVar(0,20)` missing the required `name` arg, plu
+s a float `avg_ppw` fed into CP-SAT which rejects float coeffs). Fixed 4 bugs total: (1) solver soft-constra
+int block called `model.Minimize()` INSIDE loops — CP-SAT *replaces* the objective each call, so only the la
+st term survived; rewrote to accumulate all penalty terms into one list + single `Minimize(sum(...))`, kept
+even-spread math in integers. (2) `main.py` loaded staff with `.in_("role",["teacher","principal"])` which S
+ILENTLY DROPPED "Anita Accountant" (role=`admin`) who is the only qualified teacher for 5 subjects (Hindi 8-
+A, PE 8-A, Biology/Chemistry/Hindi 9-A = 16 periods) → timetable came back missing those subjects but still
+reported "success". Fixed: load ALL staff; teaching duty is defined by `scheduling.teacher_subjects`, NOT ap
+p role. (3) solver silently skipped the period-count constraint for any subject with no candidates (`if z_su
+bj:`) — now collects those and returns a specific infeasibility instead ("never fails silently" restored). (
+4) `/generate` output didn't carry `subject_id`/`slot_id` that `/commit` requires (timetable.subject_id + sl
+ot_id are NOT NULL; output only had `subject` name + `day`/`period`) → /commit would KeyError. Fixed: main.p
+y now passes a `(day,period)->slot_id` map + subject ids through; solver emits `subject_id` + `slot_id` on e
+very row; cleaned up /commit (removed dead `auth.users` placeholder, real `reviewed_at` UTC timestamp, missi
+ng-field guard → 400). VERIFIED: /generate → 200, 45 assignments (8-A=23, 9-A=22, exact demand), ZERO teache
+r/class/room clashes (checked in DB via GROUP BY HAVING, not just API). /commit → 45 rows in `scheduling.tim
+etable`, all `is_reviewed=true` + `reviewed_at` set + `reviewed_by=null`. Infeasibility test RUN: set Suresh
+ max_periods=1 → HTTP 422 `{"conflicts":["Teacher 'Suresh Teacher' ... requires 18 periods/week but max_peri
+ods=1"]}` (specific, readable); restored max_periods=20 afterward, /generate back to 200. Built throwaway `s
+ervices/timetable-solver/timetable-test-harness.html` (dark glassmorphic like OMR harness: Generate button r
+enders per-class weekly grid tables, Commit button posts result back, renders 422 conflicts as a list). GOTC
+HAS: (a) `/commit` is INSERT-ONLY — no clear; the 45 verified rows are LEFT in `scheduling.timetable` as cle
+an demo/seed data for the Flutter timetable view. Re-running commit will DUPLICATE rows and create false cla
+shes — TRUNCATE `scheduling.timetable` before any re-commit. (b) FLUTTER TEAMMATE: read the timetable by joi
+ning `scheduling.timetable` → `scheduling.time_slots`(slot_id, gives day+period_number+start/end time) → `ac
+ademic.subjects`(subject_id) → `public.staff`(teacher_id) → `scheduling.rooms`(room_id, nullable). slot ids
+are DB-ordered (mon=1..6, tue=7..12, ...). (c) solver `num_periods` is hardcoded to 6 in main.py `_load_cons
+traints`; time_slots seed has exactly mon-fri × 6 = 30 slots. (d) `lsof` is NOT available in this env's bash
+ — kill the port-8003 process via PowerShell `Get-NetTCPConnection -LocalPort 8003 | Stop-Process`. (Opus 4.
+8)
 
-- 2026-07-22 : TIMETABLE SOLVER — PARTIAL (code written but never tested end-to-end): Files exist on disk: `supabase/migrations/0008_scheduling_schema.sql` (146 lines), `services/timetable-solver/solver.py` (263 lines, OR-Tools CP-SAT with hard + soft constraints and infeasibility reporting), `services/timetable-solver/main.py` (281 lines, FastAPI with /generate + /commit endpoints using service-role key), `services/timetable-solver/requirements.txt` (7 deps: fastapi, uvicorn, pydantic, ortools, supabase, python-dotenv, python-multipart). NO HTML test harness exists. `scheduling` schema exists live (5 tables confirmed), seeded data present, `"scheduling"` added to config.toml schemas list AND pushed live via `npx supabase config push`. CRITICAL GAP: the server was started on port 8003 but the first `/generate` call returned HTTP 500 (service_role lacked SELECT on academic.subjects — GRANT was run but the server crashed before retry could be verified). The e2e happy path test NEVER completed successfully. DELIBERATELY NOT RUN: the infeasibility test (lowering a teacher's max_periods to force a 422 with specific conflict messages) has NOT been attempted. The HTML throwaway harness also hasn't been built yet.
+- 2026-07-22 : TIMETABLE SOLVER — PARTIAL (code written but never tested end-to-end): Files exist on disk: `
+supabase/migrations/0008_scheduling_schema.sql` (146 lines), `services/timetable-solver/solver.py` (263 line
+s, OR-Tools CP-SAT with hard + soft constraints and infeasibility reporting), `services/timetable-solver/mai
+n.py` (281 lines, FastAPI with /generate + /commit endpoints using service-role key), `services/timetable-so
+lver/requirements.txt` (7 deps: fastapi, uvicorn, pydantic, ortools, supabase, python-dotenv, python-multipa
+rt). NO HTML test harness exists. `scheduling` schema exists live (5 tables confirmed), seeded data present,
+ `"scheduling"` added to config.toml schemas list AND pushed live via `npx supabase config push`. CRITICAL G
+AP: the server was started on port 8003 but the first `/generate` call returned HTTP 500 (service_role lacke
+d SELECT on academic.subjects — GRANT was run but the server crashed before retry could be verified). The e2
+e happy path test NEVER completed successfully. DELIBERATELY NOT RUN: the infeasibility test (lowering a tea
+cher's max_periods to force a 422 with specific conflict messages) has NOT been attempted. The HTML throwawa
+y harness also hasn't been built yet.
 
-- 2026-07-22 : RAZORPAY WEBHOOK ROOT CAUSE CONFIRMED + AGENTS/CLAUDE/GEMINI SYNC: The `finance.payments` empty despite captured payment bug was caused by `finance` schema not being in PostgREST's exposed schemas list (`supabase/config.toml`) — this made Supabase REST API return PGRST106 "Invalid schema: finance", which the webhook code logged as "db lookup failed" and returned HTTP 500. Fix (applied earlier this session): `npx supabase config push` added `schemas = ["public","graphql_public","finance"]` to `config.toml`. Verified live: 3 payment rows exist, `amount_paid` correctly incremented on both test invoices (`...5554` + `...5555`). Synced AGENTS.md → CLAUDE.md + GEMINI.md (byte-identical confirmed via diff). Ready to move to timetable solver (OR-Tools).
+- 2026-07-22 : RAZORPAY WEBHOOK ROOT CAUSE CONFIRMED + AGENTS/CLAUDE/GEMINI SYNC: The `finance.payments` emp
+ty despite captured payment bug was caused by `finance` schema not being in PostgREST's exposed schemas list
+ (`supabase/config.toml`) — this made Supabase REST API return PGRST106 "Invalid schema: finance", which the
+ webhook code logged as "db lookup failed" and returned HTTP 500. Fix (applied earlier this session): `npx s
+upabase config push` added `schemas = ["public","graphql_public","finance"]` to `config.toml`. Verified live
+: 3 payment rows exist, `amount_paid` correctly incremented on both test invoices (`...5554` + `...5555`). S
+ynced AGENTS.md → CLAUDE.md + GEMINI.md (byte-identical confirmed via diff). Ready to move to timetable solv
+er (OR-Tools).
 
-- 2026-07-22 : OMR E2E PIPELINE TESTED AND VERIFIED: Started local FastAPI server (`python -m uvicorn main:app --port 8002`), ran full scan via `POST /scan` with `sample_output/simulated_phone_photo.jpg` + `class_8A_template.json` + class_id `aaaaaaaa-…`. Result: **40/40 rows inserted into `attendance.records`** — roll_no 1 (Aarav) and 2 (Diya) matched student names; rolls 3–40 correctly flagged `needs_review=true` with reason "No roster match for roll_no N". Human-in-the-loop design confirmed working. Test rows cleaned up. Server is a local dev process on port 8002, not deployed yet. NOTE: Flutter teammate needs to know `attendance.records` schema: `student_id(uuid nullable), class_id(uuid), date(date), status(text), method(text), confidence(numeric), needs_review(boolean), review_reason(text), marked_by(uuid)`. For manual roll-call (teacher writing attendance from app), an authenticated-role INSERT policy will be needed later — skip service_role policy per user request. Still TODO: seed more students into class_roster so rolls 3–40 match instead of always needing review.
-- 2026-07-22 : OMR PIPELINE → SUPABASE WIRING (IN PROGRESS — e2e test pending): Applied academic + attendance schemas to live DB from scratch (both were empty; local migrations were stale same as finance). Created: `academic.classes`, `academic.class_roster` (roll_no↔student_id mapping), `academic.subjects`, `attendance.records` (with `review_reason text` column added vs old stub, `confidence numeric(4,3)`, no `staff_id`), `attendance.school_settings`. Seeded Class 8-A (`id=aaaaaaaa-…`) with Aarav=roll1, Diya=roll2. Exposed `academic` + `attendance` in PostgREST via `config push --project-ref yhcyhwpdgqupylrnkqht`. Granted USAGE+SELECT/ALL to all roles. Built `services/omr-pipeline/main.py` (FastAPI POST /scan — wraps scan_omr.scan() untouched, two-query roster lookup to avoid PGRST200 cross-schema FK issue). Built `services/omr-pipeline/omr-test-harness.html`. Updated migration files 0003 + 0006 on disk to match live. GOTCHA: PostgREST cannot auto-resolve cross-schema FKs (academic.class_roster → public.students) — must use two separate queries and join in Python (fixed in main.py). STILL TODO: restart server with fixed code + run e2e test with `sample_output/simulated_phone_photo.jpg` + confirm rows land in `attendance.records` (query live DB to verify).
+- 2026-07-22 : OMR E2E PIPELINE TESTED AND VERIFIED: Started local FastAPI server (`python -m uvicorn main:a
+pp --port 8002`), ran full scan via `POST /scan` with `sample_output/simulated_phone_photo.jpg` + `class_8A_
+template.json` + class_id `aaaaaaaa-…`. Result: **40/40 rows inserted into `attendance.records`** — roll_no
+1 (Aarav) and 2 (Diya) matched student names; rolls 3–40 correctly flagged `needs_review=true` with reason "
+No roster match for roll_no N". Human-in-the-loop design confirmed working. Test rows cleaned up. Server is
+a local dev process on port 8002, not deployed yet. NOTE: Flutter teammate needs to know `attendance.records
+` schema: `student_id(uuid nullable), class_id(uuid), date(date), status(text), method(text), confidence(num
+eric), needs_review(boolean), review_reason(text), marked_by(uuid)`. For manual roll-call (teacher writing a
+ttendance from app), an authenticated-role INSERT policy will be needed later — skip service_role policy per
+ user request. Still TODO: seed more students into class_roster so rolls 3–40 match instead of always needin
+g review.
+- 2026-07-22 : OMR PIPELINE → SUPABASE WIRING (IN PROGRESS — e2e test pending): Applied academic + attendanc
+e schemas to live DB from scratch (both were empty; local migrations were stale same as finance). Created: `
+academic.classes`, `academic.class_roster` (roll_no↔student_id mapping), `academic.subjects`, `attendance.re
+cords` (with `review_reason text` column added vs old stub, `confidence numeric(4,3)`, no `staff_id`), `atte
+ndance.school_settings`. Seeded Class 8-A (`id=aaaaaaaa-…`) with Aarav=roll1, Diya=roll2. Exposed `academic`
+ + `attendance` in PostgREST via `config push --project-ref yhcyhwpdgqupylrnkqht`. Granted USAGE+SELECT/ALL
+to all roles. Built `services/omr-pipeline/main.py` (FastAPI POST /scan — wraps scan_omr.scan() untouched, t
+wo-query roster lookup to avoid PGRST200 cross-schema FK issue). Built `services/omr-pipeline/omr-test-harne
+ss.html`. Updated migration files 0003 + 0006 on disk to match live. GOTCHA: PostgREST cannot auto-resolve c
+ross-schema FKs (academic.class_roster → public.students) — must use two separate queries and join in Python
+ (fixed in main.py). STILL TODO: restart server with fixed code + run e2e test with `sample_output/simulated
+_phone_photo.jpg` + confirm rows land in `attendance.records` (query live DB to verify).
 
-- 2026-07-22 : REAL E2E TEST VERIFIED: Completed real Test Mode Netbanking payment (`pay_TGKnanIERx7IrH`) via Razorpay Checkout harness for invoice `55555555-5555-5555-5555-555555555555` and order `order_TGKm4lnvod7S1I`. Razorpay's live webhook delivery automatically reached `razorpay-webhook` Edge Function. `finance.payments` row `057995f4-c9d3-467e-9409-8115794c23ff` was created automatically and `finance.invoices.amount_paid` incremented from 0.00 to 1000.00. End-to-end integration fully working and verified.
+- 2026-07-22 : REAL E2E TEST VERIFIED: Completed real Test Mode Netbanking payment (`pay_TGKnanIERx7IrH`) vi
+a Razorpay Checkout harness for invoice `55555555-5555-5555-5555-555555555555` and order `order_TGKm4lnvod7S
+1I`. Razorpay's live webhook delivery automatically reached `razorpay-webhook` Edge Function. `finance.payme
+nts` row `057995f4-c9d3-467e-9409-8115794c23ff` was created automatically and `finance.invoices.amount_paid`
+ incremented from 0.00 to 1000.00. End-to-end integration fully working and verified.
 
-- 2026-07-22 : CONFIRMED RESOLUTION: Exposed `finance` schema in `supabase/config.toml` (`schemas = ["public", "graphql_public", "finance"]`) and pushed to live project via `npx supabase config push`, followed by `GRANT USAGE ON SCHEMA finance`. Re-tested signed POST to `razorpay-webhook`: returned HTTP 200 `{"received":true,"payment_id":"cf81651d-f7aa-4e7c-89ce-c9065cd66185","status":"success"}`. Verified `finance.payments` row inserted and `finance.invoices.amount_paid` updated to 1000.00 for invoice `...554`. Sole root cause was unexposed `finance` schema in PostgREST config.
+- 2026-07-22 : CONFIRMED RESOLUTION: Exposed `finance` schema in `supabase/config.toml` (`schemas = ["public
+", "graphql_public", "finance"]`) and pushed to live project via `npx supabase config push`, followed by `GR
+ANT USAGE ON SCHEMA finance`. Re-tested signed POST to `razorpay-webhook`: returned HTTP 200 `{"received":tr
+ue,"payment_id":"cf81651d-f7aa-4e7c-89ce-c9065cd66185","status":"success"}`. Verified `finance.payments` row
+ inserted and `finance.invoices.amount_paid` updated to 1000.00 for invoice `...554`. Sole root cause was un
+exposed `finance` schema in PostgREST config.
 
-- 2026-07-22 : Tested POST of signed payment.captured webhook payload to deployed `razorpay-webhook` function using confirmed secret `whsec_95c30f53b87e6fb940a71cdbb8c0b8d3d20ca3013f88ed38`. Signature verification passed, but function returned HTTP 500 `{"error":"db lookup failed"}`. Root cause identified: Supabase PostgREST API rejects `{ db: { schema: 'finance' } }` with PGRST106 ("Invalid schema: finance") because non-public schema `finance` is not included in PostgREST exposed schemas.
+- 2026-07-22 : Tested POST of signed payment.captured webhook payload to deployed `razorpay-webhook` functio
+n using confirmed secret `whsec_95c30f53b87e6fb940a71cdbb8c0b8d3d20ca3013f88ed38`. Signature verification pa
+ssed, but function returned HTTP 500 `{"error":"db lookup failed"}`. Root cause identified: Supabase PostgRE
+ST API rejects `{ db: { schema: 'finance' } }` with PGRST106 ("Invalid schema: finance") because non-public
+schema `finance` is not included in PostgREST exposed schemas.
 
-- 2026-07-22 : Generated brand new secret `whsec_95c30f53b87e6fb940a71cdbb8c0b8d3d20ca3013f88ed38` and synced explicitly on both Supabase (`npx supabase secrets set`) and Razorpay Dashboard. Re-tested end-to-end with fresh invoice `55555555-5555-5555-5555-555555555554` and order `order_TGKUXK8aXZOnqw` (notes.invoice_id verified). Real Netbanking payment `pay_TGKWoGj6IqBiyO` captured successfully in Razorpay API. Result: `finance.payments` remains empty (0 rows) and `finance.invoices.amount_paid` remains 0.00. secret-mismatch hypothesis is disproved.
+- 2026-07-22 : Generated brand new secret `whsec_95c30f53b87e6fb940a71cdbb8c0b8d3d20ca3013f88ed38` and synce
+d explicitly on both Supabase (`npx supabase secrets set`) and Razorpay Dashboard. Re-tested end-to-end with
+ fresh invoice `55555555-5555-5555-5555-555555555554` and order `order_TGKUXK8aXZOnqw` (notes.invoice_id ver
+ified). Real Netbanking payment `pay_TGKWoGj6IqBiyO` captured successfully in Razorpay API. Result: `finance
+.payments` remains empty (0 rows) and `finance.invoices.amount_paid` remains 0.00. secret-mismatch hypothesi
+s is disproved.
 
 - 2026-07-22 : Continued webhook signature debugging. CORRECTED prior finding:
   the "signed with RAZORPAY_KEY_SECRET → 401" test from 2026-07-21 was a
@@ -529,7 +704,7 @@ the user), then start on task 1. (grok-4.5)
   STATE IS UNKNOWN AND UNTRUSTED — do not assume the re-sync completed.
 
   NEXT SESSION MUST DO FIRST, IN ORDER:
-  
+
   1. Run `npx supabase secrets list` and check RAZORPAY_WEBHOOK_SECRET's
      digest + "updated" timestamp — compare timestamp to when this
      session crashed to infer whether the `secrets set` call landed.
@@ -552,7 +727,55 @@ the user), then start on task 1. (grok-4.5)
      status check are the reliable signals.
   (Claude — Opus 4.8)
 
-- 2026-07-21 : Debugged razorpay-webhook not firing after real payment. Investigated: (1) DB confirmed — `finance.payments` still has only 1 seeded row (...551), invoice ...552 `amount_paid` = 0. (2) Razorpay API confirmed — payment `pay_TG7QqgoNb3yrsT` status=`captured`, method=`netbanking`, ₹1,00,000, order had `notes.invoice_id` set correctly. Manual-capture hypothesis DISPROVED. (3) Webhook config in Razorpay Dashboard: active=true, `payment.captured=true`, `secret_exists=true`. (4) CRITICAL FINDING: constructed a valid HMAC-SHA256 signature with the stored `RAZORPAY_WEBHOOK_SECRET` and POSTed to the deployed function — it returned 401 Invalid Signature. Strongly indicates secret mismatch between Razorpay Dashboard and Supabase env. (5) Razorpay delivery log not accessible via API (returns route error) — user must check Dashboard manually. NEXT: compare `RAZORPAY_WEBHOOK_SECRET` value in Supabase vs Razorpay Dashboard, regenerate if mismatched, re-test. (Claude — Sonnet 5)
-- 2026-07-21 : Built out `supabase/functions/razorpay-webhook/index.ts` for real (was a stub) + deployed. Verifies Razorpay signature (HMAC-SHA256 over RAW body — reads `req.text()`, verifies, THEN parses; reject-on-mismatch 401, confirmed live) using `RAZORPAY_WEBHOOK_SECRET` (falls back to `RAZORPAY_KEY_SECRET`). `payment.captured`→insert finance.payments status='success' + bump finance.invoices.amount_paid; `payment.failed`→status='failed'. Uses SERVICE_ROLE client to bypass RLS. Deployed with `--no-verify-jwt` (Razorpay can't send a Supabase JWT; signature is the auth). GOTCHAS: (1) `finance.payments.invoice_id` is NOT NULL but webhook payload has only order_id — invoice_id is resolved from `payment.entity.notes.invoice_id`, so `create-razorpay-order` was updated to send `notes:{invoice_id}` on the order (both redeployed). (2) Verified real finance schema live via `npx supabase db query --linked` — the local `0002_finance_schema.sql` was STALE (wrong tables: transactions/student_fees) and is now archived as `0002_finance_schema.sql.stale`. Real tables: finance.payments + finance.invoices(amount_due,amount_paid). Enums: payment_method(upi,credit_card,debit_card,net_banking,cash,cheque,demand_draft,scholarship,grant,loan,waiver), payment_status(pending,processing,success,failed,refunded). (3) `db pull` reports success but writes NO file + now errors with migration-history conflict — don't trust it; use `db query --linked` for live schema. STILL TODO: user must create the webhook in Razorpay Dashboard + set `RAZORPAY_WEBHOOK_SECRET` in Supabase secrets (steps given). (Claude — Opus 4.8)
-- 2026-07-20 : Added `supabase/functions/create-razorpay-order/index.ts` (Smart School FinTech challenge). Creates a Razorpay Test Mode order and returns it to the Flutter client before Checkout opens. Hardened over the base skeleton: input validation (400 on bad invoice_id/amount), `Math.round(amount*100)` to avoid paise float drift, propagates Razorpay's real HTTP status instead of hardcoded 200, CORS+OPTIONS for the web build, key-presence 500. GOTCHA: function trusts client-supplied `amount` — fine for Test Mode, but real collection should look the amount up from finance.* server-side to prevent underpayment. Payment is only *recorded* by `razorpay-webhook` (still has signature-verify + finance.transactions upsert as TODOs). (Claude — Opus 4.8)
-- 2026-07-19 : Repo repurposed for the Smart School FinTech Innovation Challenge 2026 + Future Ready Ops Innovation Challenge builds. Prior entries (BRSR_Project_Dashboard.html work, unrelated project) archived to `.agent-log/archive/SESSION_LOG_pre_20260719.md`. Architecture already decided: single Supabase/Postgres instance with `finance.*`/`academic.*`/`staff.*`/`scheduling.*`/`attendance.*`/`documents.*` schemas linked via shared student/staff reference tables; Flutter+Riverpod single app with role-based dashboards; Razorpay Test Mode for payments; OR-Tools for timetable solving; Vision-LLM (not RAG) for document extraction. OMR sheet generator + ArUco-based scanner already built and validated outside this repo (`/omr_pipeline` — 100% accuracy on a simulated warped/rotated/noisy phone photo) and ready to be ported in. Full rationale in `AGENTS.md`. (Claude — Sonnet)
+- 2026-07-21 : Debugged razorpay-webhook not firing after real payment. Investigated: (1) DB confirmed — `fi
+nance.payments` still has only 1 seeded row (...551), invoice ...552 `amount_paid` = 0. (2) Razorpay API con
+firmed — payment `pay_TG7QqgoNb3yrsT` status=`captured`, method=`netbanking`, ₹1,00,000, order had `notes.in
+voice_id` set correctly. Manual-capture hypothesis DISPROVED. (3) Webhook config in Razorpay Dashboard: acti
+ve=true, `payment.captured=true`, `secret_exists=true`. (4) CRITICAL FINDING: constructed a valid HMAC-SHA25
+6 signature with the stored `RAZORPAY_WEBHOOK_SECRET` and POSTed to the deployed function — it returned 401
+Invalid Signature. Strongly indicates secret mismatch between Razorpay Dashboard and Supabase env. (5) Razor
+pay delivery log not accessible via API (returns route error) — user must check Dashboard manually. NEXT: co
+mpare `RAZORPAY_WEBHOOK_SECRET` value in Supabase vs Razorpay Dashboard, regenerate if mismatched, re-test.
+(Claude — Sonnet 5)
+- 2026-07-21 : Built out `supabase/functions/razorpay-webhook/index.ts` for real (was a stub) + deployed. Ve
+rifies Razorpay signature (HMAC-SHA256 over RAW body — reads `req.text()`, verifies, THEN parses; reject-on-
+mismatch 401, confirmed live) using `RAZORPAY_WEBHOOK_SECRET` (falls back to `RAZORPAY_KEY_SECRET`). `paymen
+t.captured`→insert finance.payments status='success' + bump finance.invoices.amount_paid; `payment.failed`→s
+tatus='failed'. Uses SERVICE_ROLE client to bypass RLS. Deployed with `--no-verify-jwt` (Razorpay can't send
+ a Supabase JWT; signature is the auth). GOTCHAS: (1) `finance.payments.invoice_id` is NOT NULL but webhook
+payload has only order_id — invoice_id is resolved from `payment.entity.notes.invoice_id`, so `create-razorp
+ay-order` was updated to send `notes:{invoice_id}` on the order (both redeployed). (2) Verified real finance
+ schema live via `npx supabase db query --linked` — the local `0002_finance_schema.sql` was STALE (wrong tab
+les: transactions/student_fees) and is now archived as `0002_finance_schema.sql.stale`. Real tables: finance
+.payments + finance.invoices(amount_due,amount_paid). Enums: payment_method(upi,credit_card,debit_card,net_b
+anking,cash,cheque,demand_draft,scholarship,grant,loan,waiver), payment_status(pending,processing,success,fa
+iled,refunded). (3) `db pull` reports success but writes NO file + now errors with migration-history conflic
+t — don't trust it; use `db query --linked` for live schema. STILL TODO: user must create the webhook in Raz
+orpay Dashboard + set `RAZORPAY_WEBHOOK_SECRET` in Supabase secrets (steps given). (Claude — Opus 4.8)
+- 2026-07-20 : Added `supabase/functions/create-razorpay-order/index.ts` (Smart School FinTech challenge). C
+reates a Razorpay Test Mode order and returns it to the Flutter client before Checkout opens. Hardened over
+the base skeleton: input validation (400 on bad invoice_id/amount), `Math.round(amount*100)` to avoid paise
+float drift, propagates Razorpay's real HTTP status instead of hardcoded 200, CORS+OPTIONS for the web build
+, key-presence 500. GOTCHA: function trusts client-supplied `amount` — fine for Test Mode, but real collecti
+on should look the amount up from finance.* server-side to prevent underpayment. Payment is only *recorded*
+by `razorpay-webhook` (still has signature-verify + finance.transactions upsert as TODOs). (Claude — Opus 4.
+8)
+- 2026-07-19 : Repo repurposed for the Smart School FinTech Innovation Challenge 2026 + Future Ready Ops Inn
+ovation Challenge builds. Prior entries (BRSR_Project_Dashboard.html work, unrelated project) archived to `.
+agent-log/archive/SESSION_LOG_pre_20260719.md`. Architecture already decided: single Supabase/Postgres insta
+nce with `finance.*`/`academic.*`/`staff.*`/`scheduling.*`/`attendance.*`/`documents.*` schemas linked via s
+hared student/staff reference tables; Flutter+Riverpod single app with role-based dashboards; Razorpay Test
+Mode for payments; OR-Tools for timetable solving; Vision-LLM (not RAG) for document extraction. OMR sheet g
+enerator + ArUco-based scanner already built and validated outside this repo (`/omr_pipeline` — 100% accurac
+y on a simulated warped/rotated/noisy phone photo) and ready to be ported in. Full rationale in `AGENTS.md`.
+Mode for payments; OR-Tools for timetable solving; Vision-LLM (not RAG) for document extraction. OMR sheet g
+enerator + ArUco-based scanner already built and validated outside this repo (`/omr_pipeline` — 100% accurac
+y on a simulated warped/rotated/noisy phone photo) and ready to be ported in. Full rationale in `AGENTS.md`.
+ (Claude — Sonnet)
+## [2026-07-28] Admin Dashboard Redesign
+Redesigned the admin dashboard into a full executive dashboard with KPI cards, financial charts, and operati
+onal widgets. Implemented core/dashboard/dashboard_provider.dart for data aggregation, core/widgets/ for reu
+sable components (KpiCard, LineChart, BarChart, PieChart), and updated features/dashboard/admin/admin_dashbo
+ard.dart with comprehensive layout including 11 KPI cards, 5 charts (fee trend, expense breakdown, payment d
+istribution, budget utilization, student distribution), and 6 widget sections (approval queue, system alerts
+, recent activities, fee deadlines, top defaulters, quick actions).

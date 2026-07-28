@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
-import '../../../core/auth/self_children_provider.dart';
 import '../../../core/auth/self_record_provider.dart';
+import '../../../core/auth/self_children_provider.dart';
 import '../../../core/auth/user_role.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import '../../../shared/widgets/search_filter/search_filter_bar.dart';
+import '../../../shared/widgets/search_filter/utils.dart';
 
 /// Waiver/scholarship requests — role-aware single screen, same pattern as
 /// LeaveRequestsScreen. A parent submits for one of their linked children
-/// (self_children_provider, so only real linked kids show up — same honest-gating
-/// approach as ParentDashboard). Admin/principal approve or reject.
+/// (self_children_provider, so only real linked kids show up). Admin/principal
+/// approve or reject. Now with enhanced search/filter/sorting.
 class WaiverRequestsScreen extends ConsumerStatefulWidget {
   const WaiverRequestsScreen({super.key});
 
@@ -23,26 +26,50 @@ class WaiverRequestsScreen extends ConsumerStatefulWidget {
 class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
   late Future<_WaiverData> _future;
 
+  // Search and filter state
+  String _searchQuery = '';
+  SortOption? _sortOption;
+  String _filterStatus = 'all';
+
   @override
   void initState() {
     super.initState();
+    _sortOption = SortOptions.sortByDate;
     _future = _load();
+  }
+
+  Future<void> _refresh([String? message]) async {
+    setState(() { _future = _load(); });
+    if (message != null) {
+      _showSnack(message);
+    }
+  }
+
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: isError ? AppColors.error : AppColors.success),
+    );
   }
 
   Future<_WaiverData> _load() async {
     final client = ref.read(supabaseClientProvider);
+
     final requests = await client
         .schema('finance')
         .from('waiver_requests')
         .select('id, student_id, request_type, requested_amount, reason, status, created_at, disbursed_at, invoice_id')
         .order('created_at', ascending: false);
+
     final studentIds = (requests as List).map((r) => r['student_id']).toSet().toList();
     final students = studentIds.isEmpty
         ? []
-        : await client.schema('public').from('students').select('id, full_name').inFilter('id', studentIds);
+        : await client.schema('public').from('students').select('id, full_name, admission_number').inFilter('id', studentIds);
+
     return _WaiverData(
       requests: List<Map<String, dynamic>>.from(requests),
       nameByStudentId: {for (final s in students) s['id'] as String: s['full_name'] as String},
+      admissionNumberById: {for (final s in students) s['id'] as String: (s['admission_number'] as String?) ?? ''},
     );
   }
 
@@ -76,58 +103,155 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
     }
   }
 
-  /// Disburse an approved waiver: reduce the linked invoice's amount_due by the
-  /// requested_amount, then mark disbursed_at = now(). Only callable when
-  /// status='approved' AND disbursed_at IS NULL.
+  /// Disburse an approved scholarship/waiver via the atomic RPC.
+  /// Validates on the server: checks student exists, fees aren't already paid,
+  /// caps to outstanding balance, creates a payment record, and returns the result.
   Future<void> _disburse(Map<String, dynamic> request) async {
     final client = ref.read(supabaseClientProvider);
+    final selfStaffId = await ref.read(selfStaffIdProvider.future);
+
+    if (selfStaffId == null) {
+      _showError('Your account must be linked to a staff record to disburse.');
+      return;
+    }
+
+    // Pre-flight: show confirmation dialog with details
+    final invoice = await _getInvoiceData(request['invoice_id'] as String?);
+    if (invoice == null) {
+      _showError('Cannot disburse: no invoice linked to this request.');
+      return;
+    }
+
+    final outstanding = ((invoice['amount_due'] as num?)?.toDouble() ?? 0) -
+        ((invoice['amount_paid'] as num?)?.toDouble() ?? 0);
+    final requestedAmount = (request['requested_amount'] as num).toDouble();
+
+    if (outstanding <= 0) {
+      _showError('Fees already paid. No outstanding balance to apply this against.');
+      return;
+    }
+
+    final actualAmount = requestedAmount <= outstanding
+        ? requestedAmount
+        : outstanding;
+
+    // Show confirmation
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Disbursement'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _confirmationRow('Requested', '₹${requestedAmount.toStringAsFixed(0)}'),
+            _confirmationRow('Outstanding', '₹${outstanding.toStringAsFixed(0)}'),
+            const Divider(height: 16),
+            _confirmationRow(
+              'To disburse',
+              '₹${actualAmount.toStringAsFixed(0)}',
+              bold: true,
+            ),
+            if (actualAmount < requestedAmount)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Note: Amount capped to outstanding balance.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.warning,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Disburse')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
-      final invoiceId = request['invoice_id'] as String?;
-      final requestedAmount = (request['requested_amount'] as num).toDouble();
+      final result = await client.rpc('disburse_waiver', params: {
+        'p_request_id': request['id'] as String,
+        'p_staff_id': selfStaffId,
+      });
 
-      if (invoiceId != null) {
-        // Fetch current amount_due from the linked invoice.
-        final invoice = await client
-            .schema('finance')
-            .from('invoices')
-            .select('id, amount_due')
-            .eq('id', invoiceId)
-            .maybeSingle();
-
-        if (invoice == null) {
-          _showError('Linked invoice not found.');
-          return;
-        }
-
-        final currentDue = (invoice['amount_due'] as num).toDouble();
-        final newDue = (currentDue - requestedAmount).clamp(0, double.infinity);
-
-        // Reduce amount_due by the waiver amount.
-        await client.schema('finance').from('invoices').update({
-          'amount_due': newDue,
-        }).eq('id', invoiceId);
+      final resultMap = result as Map<String, dynamic>;
+      if (resultMap['success'] == true) {
+        _refresh(resultMap['message'] as String);
+      } else {
+        _showError(resultMap['message'] as String);
       }
-
-      // Mark as disbursed.
-      await client.schema('finance').from('waiver_requests').update({
-        'disbursed_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', request['id'] as String);
-
-      _refresh('Waiver disbursed successfully.');
     } catch (e) {
       _showError(e);
     }
   }
 
-  void _refresh(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: AppColors.success));
-    setState(() { _future = _load(); });
+  Widget _confirmationRow(String label, String value, {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          Text(value, style: TextStyle(
+            fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          )),
+        ],
+      ),
+    );
   }
+
+  /// Fetch outstanding balance for a linked invoice (used for pre-check display).
+  Future<Map<String, dynamic>?> _getInvoiceData(String? invoiceId) async {
+    if (invoiceId == null) return null;
+    final client = ref.read(supabaseClientProvider);
+    try {
+      return await client
+          .schema('finance')
+          .from('invoices')
+          .select('id, amount_due, amount_paid')
+          .eq('id', invoiceId)
+          .maybeSingle() as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+
 
   void _showError(Object e) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error));
+  }
+
+  // Filter and sort helpers for waiver requests
+  List<Map<String, dynamic>> _filterRequests(List<Map<String, dynamic>> requests, Map<String, String> nameMap) {
+    var filtered = requests;
+
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((r) {
+        final studentName = (nameMap[r['student_id']] ?? '').toLowerCase();
+        final reason = (r['reason'] as String?)?.toLowerCase() ?? '';
+        return studentName.contains(query) || reason.contains(query) || (r['request_type']?.toString().contains(query) ?? false);
+      }).toList();
+    }
+
+    // Status filter
+    if (_filterStatus != 'all') {
+      filtered = filtered.where((r) => r['status'] == _filterStatus).toList();
+    }
+
+    // Sorting
+    if (_sortOption != null) {
+      filtered = ListSorter.sortItems(filtered, _sortOption!, true).toList();
+    }
+
+    return filtered;
   }
 
   void _showRequestSheet(List<LinkedChild> children) {
@@ -219,6 +343,8 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
               }
               final data = snapshot.data!;
 
+              final filteredRequests = _filterRequests(data.requests, data.nameByStudentId);
+
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
@@ -242,7 +368,35 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
                       ),
                     ),
                   ),
-                  if (data.requests.isEmpty)
+                  // Search and filter controls
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      child: SearchFilterBar(
+                        title: 'Requests',
+                        hintText: 'Search by student name, reason, or type...',
+                        onSearch: (value) {
+                          setState(() {
+                            _searchQuery = value;
+                          });
+                          _refresh();
+                        },
+                        sorts: [
+                          SortOptions.sortByDate,
+                          SortOptions.sortByAmount,
+                        ],
+                        currentSortValue: _sortOption?.value,
+                        onSortSelected: (option) {
+                          setState(() {
+                            _sortOption = option;
+                          });
+                          _refresh();
+                        },
+                      ),
+                    ),
+                  ),
+
+                  if (filteredRequests.isEmpty)
                     const SliverFillRemaining(
                       hasScrollBody: false,
                       child: Center(child: Text('No requests yet.')),
@@ -252,7 +406,7 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          data.requests.map((r) {
+                          filteredRequests.map((r) {
                             final status = r['status'] as String;
                             final statusColor = switch (status) {
                               'approved' => AppColors.success,
@@ -328,7 +482,14 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
 }
 
 class _WaiverData {
-  _WaiverData({required this.requests, required this.nameByStudentId});
+  _WaiverData({
+    required this.requests,
+    required this.nameByStudentId,
+    required this.admissionNumberById,
+  });
+
   final List<Map<String, dynamic>> requests;
   final Map<String, String> nameByStudentId;
+  final Map<String, String> admissionNumberById;
 }
+

@@ -6,6 +6,8 @@ import '../../../core/auth/self_record_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import '../../../shared/widgets/search_filter/search_filter_bar.dart';
+import '../../../shared/widgets/search_filter/utils.dart';
 
 /// Real approval queue — finance.purchase_orders, finance.vendor_payments,
 /// finance.payroll_runs, all filtered to status='pending_approval'. Approve/Reject
@@ -20,13 +22,9 @@ import '../../../shared/widgets/warm_backdrop.dart';
 /// (that would need a drawing/signature-pad widget, a separate, smaller feature this
 /// doesn't attempt).
 class ApprovalQueueScreen extends ConsumerStatefulWidget {
-  /// When [filter] is:
-  /// - null (default): show all pending items (POs, vendor payments, payroll).
-  /// - 'hr': show only payroll items (HR workspace).
-  /// - 'finance': show only POs + vendor payments (Finance workspace).
-  const ApprovalQueueScreen({super.key, this.filter});
-
   final String? filter;
+
+  const ApprovalQueueScreen({super.key, this.filter});
 
   @override
   ConsumerState<ApprovalQueueScreen> createState() => _ApprovalQueueScreenState();
@@ -35,81 +33,68 @@ class ApprovalQueueScreen extends ConsumerStatefulWidget {
 class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
   late Future<_QueueData> _future;
 
+  // Search and filter state
+  String _searchQuery = '';
+  SortOption? _sortOption;
+  final Map<String, String> _filterByType = {'purchase': 'all', 'vendor': 'all', 'payroll': 'all'};
+  String? _roleFilter;
+
   @override
   void initState() {
     super.initState();
+    _sortOption = SortOptions.sortByDate;
+    _roleFilter = widget.filter;
     _future = _load();
+  }
+
+  Future<void> _refresh([String? message]) async {
+    setState(() { _future = _load(); });
+    if (message != null) {
+      _showSnack(message);
+    }
   }
 
   Future<_QueueData> _load() async {
     final client = ref.read(supabaseClientProvider);
-    final filter = widget.filter;
 
-    // When filter is null, load everything. When 'hr', only payroll. When 'finance',
-    // only POs + vendor payments.
-    final loadPo = filter == null || filter == 'finance';
-    final loadVp = filter == null || filter == 'finance';
-    final loadPayroll = filter == null || filter == 'hr';
+    // Filter based on role (hr vs finance)
+    List<Map<String, dynamic>> pos = [];
+    List<Map<String, dynamic>> vps = [];
+    List<Map<String, dynamic>> payroll = [];
 
-    final futures = <Future<dynamic>>[];
-    final futuresMeta = <String>[];
-
-    if (loadPo) {
-      futures.add(client
+    if (_roleFilter == null || _roleFilter == 'finance') {
+      pos = await client
           .schema('finance')
           .from('purchase_orders')
-          .select('id, description, amount, requested_by, created_at')
+          .select('id, description, amount, requested_by, created_at, vendor_id')
           .eq('status', 'pending_approval')
-          .order('created_at'));
-      futuresMeta.add('po');
-    }
-    if (loadVp) {
-      futures.add(client
+          .order('created_at');
+
+      vps = await client
           .schema('finance')
           .from('vendor_payments')
           .select('id, amount, method, purchase_order_id, created_at')
           .eq('status', 'pending_approval')
-          .order('created_at'));
-      futuresMeta.add('vp');
+          .order('created_at');
     }
-    if (loadPayroll) {
-      futures.add(client
+
+    if (_roleFilter == null || _roleFilter == 'hr') {
+      payroll = await client
           .schema('finance')
           .from('payroll_runs')
-          .select('id, employee_id, pay_period, gross_amount, net_amount, created_at')
+          .select('id, employee_id, pay_period, gross_amount, net_amount, status, created_at')
           .eq('status', 'pending_approval')
-          .order('created_at'));
-      futuresMeta.add('payroll');
+          .order('created_at');
     }
 
-    final results = await Future.wait(futures);
-
-    // Resolve staff names for display — separate fetch + client-side join, same
-    // deliberate choice as teacher_dashboard.dart (avoids fragile cross-schema
-    // PostgREST embeds).
+    // Resolve staff names for display — separate fetch + client-side join
     final staff = await client.schema('public').from('staff').select('id, full_name');
     final nameById = <String, String>{for (final s in staff as List) s['id'] as String: s['full_name'] as String};
 
-    List<Map<String, dynamic>> posList = [];
-    List<Map<String, dynamic>> vpList = [];
-    List<Map<String, dynamic>> payrollList = [];
-
-    for (var i = 0; i < results.length; i++) {
-      final items = List<Map<String, dynamic>>.from(results[i] as List);
-      switch (futuresMeta[i]) {
-        case 'po':
-          posList = items;
-        case 'vp':
-          vpList = items;
-        case 'payroll':
-          payrollList = items;
-      }
-    }
-
     return _QueueData(
-      purchaseOrders: posList,
-      vendorPayments: vpList,
-      payrollRuns: payrollList,
+      purchaseOrders: List<Map<String, dynamic>>.from(pos as List),
+      vendorPayments: List<Map<String, dynamic>>.from(vps as List),
+      payrollRuns: List<Map<String, dynamic>>.from(payroll as List),
       staffNameById: nameById,
     );
   }
@@ -131,12 +116,10 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
       final update = {
         'status': approve ? 'approved' : 'rejected',
         if (schemaTable != 'payroll_runs') 'approved_by': selfStaffId,
-        // NOTE: payroll_runs has no approved_by column in the live schema — verified,
-        // not assumed. Only purchase_orders and vendor_payments track it.
       };
       await client.schema('finance').from(schemaTable).update(update).eq('id', id);
       _showSnack(approve ? 'Approved.' : 'Rejected.');
-      setState(() { _future = _load(); });
+      _refresh();
     } catch (e) {
       _showSnack('Failed: $e', isError: true);
     }
@@ -150,6 +133,70 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
         backgroundColor: isError ? AppColors.error : AppColors.success,
       ),
     );
+  }
+
+  // Apply search and filter to purchase orders
+  List<Map<String, dynamic>> _filterPurchaseOrders(List<Map<String, dynamic>> items) {
+    var filtered = items;
+
+    // Search filter
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((item) {
+        return (item['description']?.toString().toLowerCase().contains(query) ?? false) ||
+               (item['requested_by']?.toString().toLowerCase().contains(query) ?? false) ||
+               ((item['amount'] as num?)?.toString().contains(_searchQuery) ?? false);
+      }).toList();
+    }
+
+    // Type-specific filter (if implemented)
+    if (_filterByType['purchase'] != 'all') {
+      // Placeholder for additional filtering logic
+    }
+
+    // Sorting
+    if (_sortOption != null) {
+      filtered = ListSorter.sortItems(filtered, _sortOption!, true).toList();
+    }
+
+    return filtered;
+  }
+
+  List<Map<String, dynamic>> _filterVendorPayments(List<Map<String, dynamic>> items) {
+    var filtered = items;
+
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((item) {
+        return (item['method']?.toString().toLowerCase().contains(query) ?? false) ||
+               ((item['amount'] as num?)?.toString().contains(_searchQuery) ?? false);
+      }).toList();
+    }
+
+    if (_sortOption != null) {
+      filtered = ListSorter.sortItems(filtered, _sortOption!, true).toList();
+    }
+
+    return filtered;
+  }
+
+  List<Map<String, dynamic>> _filterPayrollRuns(List<Map<String, dynamic>> items) {
+    var filtered = items;
+
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((item) {
+        return (item['employee_id']?.toString().toLowerCase().contains(query) ?? false) ||
+               (item['pay_period']?.toString().toLowerCase().contains(query) ?? false) ||
+               ((item['net_amount'] as num?)?.toString().contains(_searchQuery) ?? false);
+      }).toList();
+    }
+
+    if (_sortOption != null) {
+      filtered = ListSorter.sortItems(filtered, _sortOption!, true).toList();
+    }
+
+    return filtered;
   }
 
   @override
@@ -170,13 +217,6 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
               final data = snapshot.data!;
               final totalPending = data.purchaseOrders.length + data.vendorPayments.length + data.payrollRuns.length;
 
-              // Title changes based on filter mode.
-              final title = widget.filter == 'hr'
-                  ? 'HR Approvals'
-                  : widget.filter == 'finance'
-                      ? 'Finance Approvals'
-                      : 'Approval Queue';
-
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
@@ -185,12 +225,36 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(title, style: Theme.of(context).textTheme.headlineMedium),
+                          Text('Approval Queue', style: Theme.of(context).textTheme.headlineMedium),
                           GlassChip(label: '$totalPending pending', icon: Icons.pending_actions_outlined, color: AppColors.warning),
                         ],
                       ),
                     ),
                   ),
+                  // Search and sort controls
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      child: SearchFilterBar(
+                        hintText: 'Search across all items...',
+                        onSearch: (value) {
+                          setState(() {
+                            _searchQuery = value;
+                          });
+                          _refresh();
+                        },
+                        sorts: SortOptions.allFields,
+                        currentSortValue: _sortOption?.value,
+                        onSortSelected: (option) {
+                          setState(() {
+                            _sortOption = option;
+                          });
+                          _refresh();
+                        },
+                      ),
+                    ),
+                  ),
+
                   if (totalPending == 0)
                     const SliverFillRemaining(
                       hasScrollBody: false,
@@ -203,7 +267,7 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
                         delegate: SliverChildListDelegate([
                           if (data.purchaseOrders.isNotEmpty) ...[
                             _sectionLabel(context, 'Purchase Orders'),
-                            ...data.purchaseOrders.map((po) => _ApprovalCard(
+                            ..._filterPurchaseOrders(data.purchaseOrders).map((po) => _ApprovalCard(
                                   title: po['description'] as String,
                                   subtitle: 'Requested by ${data.staffNameById[po['requested_by']] ?? 'Unknown'}',
                                   amount: (po['amount'] as num).toDouble(),
@@ -214,7 +278,7 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
                           ],
                           if (data.vendorPayments.isNotEmpty) ...[
                             _sectionLabel(context, 'Vendor Payments'),
-                            ...data.vendorPayments.map((vp) => _ApprovalCard(
+                            ..._filterVendorPayments(data.vendorPayments.map((vp) => Map<String, dynamic>.from(vp)).toList()).map((vp) => _ApprovalCard(
                                   title: 'Vendor payment · ${vp['method']}',
                                   subtitle: 'PO #${(vp['purchase_order_id'] as String).substring(0, 8)}',
                                   amount: (vp['amount'] as num).toDouble(),
@@ -225,7 +289,7 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
                           ],
                           if (data.payrollRuns.isNotEmpty) ...[
                             _sectionLabel(context, 'Payroll'),
-                            ...data.payrollRuns.map((p) => _ApprovalCard(
+                            ..._filterPayrollRuns(data.payrollRuns.map((p) => Map<String, dynamic>.from(p)).toList()).map((p) => _ApprovalCard(
                                   title: '${data.staffNameById[p['employee_id']] ?? 'Unknown'} · ${p['pay_period']}',
                                   subtitle: 'Net pay',
                                   amount: (p['net_amount'] as num).toDouble(),

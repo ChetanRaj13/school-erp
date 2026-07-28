@@ -64,10 +64,6 @@ RoleNav navFor(UserRole role) {
               label: 'Fee Management',
               route: '/admin/fees'),
           NavDestination(
-              icon: Icons.payments_outlined,
-              label: 'Offline Payments',
-              route: '/admin/offline-payments'),
-          NavDestination(
               icon: Icons.pending_actions_outlined,
               label: 'Approval Queue',
               route: '/admin/approvals'),
