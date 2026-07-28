@@ -224,6 +224,8 @@ bonus, not a requirement — don't rely on it being in sync with this file.
 - Redesigned and improved parent Overview dashboard layout: modified `ProgressRing` to scale label and subtitle text sizes dynamically to prevent layout clipping and boundary overflow, and structured overview cards to have matched symmetric heights (height 110).
 - Refactored `SearchFilterBar` to place clear search and sort options inline inside the search text field's `suffixIcon` as a compact chip dropdown (using `Icons.tune_outlined`), cleaning up layout across all searchable modules.
 - Enhanced contrast and visual visibility of the parent dashboard "Quick Links" header label on dark backgrounds by styling it white with a drop shadow.
+- Fixed release compilation type mismatch error in `search_filter_bar.dart` by adding explicit `<SortOption>` type parameter to `DropdownMenuItem` inside the mapping list, preventing `List<DropdownMenuItem<dynamic>>` to `List<DropdownMenuItem<SortOption>>` assignment errors during strict `dart2js` build compilation.
+- Optimized Vercel build parameters in `vercel.json`: enabled shallow clones (`--depth 1`) to prevent heavy clones/timeouts, wrapped `--dart-define` environment variable configurations in escaped double quotes to safeguard shell parsing against empty/special characters, and prepended a `flutter clean` phase to ensure compile caches are clear.
 - Kept the rewrite rule for client-side routing.
 
 

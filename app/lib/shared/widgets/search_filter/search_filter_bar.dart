@@ -86,7 +86,7 @@ class SearchFilterBar extends StatelessWidget {
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<SortOption>(
                                 value: sorts!.firstWhere((s) => s.value == currentSortValue, orElse: () => sorts!.first),
-                                items: sorts!.map((sort) => DropdownMenuItem(
+                                items: sorts!.map((sort) => DropdownMenuItem<SortOption>(
                                   value: sort,
                                   child: Text(sort.label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                 )).toList(),

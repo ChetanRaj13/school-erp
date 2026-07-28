@@ -5,6 +5,10 @@ nd a new entry when you finish a task. Don't remove anything from the existing f
 
 ---
 
+## [2026-07-28] Fix Release Web Compilation Mismatch and Optimize Vercel Build Commands
+- Added missing `<SortOption>` generic type parameter to `DropdownMenuItem` inside the inline sort dropdown of `SearchFilterBar`, resolving type mismatch errors (`List<DropdownMenuItem<dynamic>>` cannot be assigned to `List<DropdownMenuItem<SortOption>>`) triggered by strict Dart release compilation (`dart2js`).
+- Optimized `vercel.json` settings: enabled shallow cloning (`--depth 1`) to bypass slow history fetching/timeouts on Vercel, wrapped `--dart-define` parameters in quotes to prevent shell parsing failure on environment variable characters, and added `flutter clean` prior to build for cleaner caches.
+
 ## [2026-07-28] Inline Sort Dropdown inside SearchFilterBar and Improve Quick Links Visibility
 - Refactored `SearchFilterBar` to place the sorting dropdown and clear button inline inside the search `TextField`'s `suffixIcon` (styled with a rounded border and `Icons.tune_outlined` icon) for a more compact and premium filter look.
 - Improved contrast and readability of the "Quick Links" text on the Parent Overview dashboard by coloring it white and adding a subtle text shadow.
