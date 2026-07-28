@@ -5,6 +5,18 @@ nd a new entry when you finish a task. Don't remove anything from the existing f
 
 ---
 
+## [2026-07-28] Fix Database Schema Mismatches, Parent Overview Layout, and Fees Loading Crashes
+- Fixed a `PostgrestException` crash on the HR Overview screen by pointing the `leave_requests` query to the correct `public` schema instead of `finance`.
+- Fixed the Parent Overview dashboard's attendance circle layout: modified `ProgressRing` to scale text size dynamically with the ring's diameter to prevent layout overflow, and matched overview card heights symmetrically (height 110).
+- Fixed the parent Fees screen crash (null check operator on null `_data`) by correcting the page load trigger condition `if (_loading && _data == null)` to `if (!_loading && _data == null)`.
+- Fixed the Messages screen crash on class queries by replacing the non-existent `students.class_id` reference with a lookup against the `academic.class_roster` mapping.
+
+## [2026-07-28] Fix Type Cast Runtime Crash in dashboard_provider.dart
+Fixed a runtime `TypeError` in `_loadDashboardSummary` where future variables (`studentsFuture`, `staffFuture`, etc.) were cast directly as `List` before waiting for their resolution via `Future.wait`. Also fixed a `DateTime` casting error in `activities.sort` where `timestamp` (already a `DateTime` object) was incorrectly cast `as String?` to be parsed, triggering a runtime type mismatch crash on the Admin dashboard.
+
+## [2026-07-28] Configure Vercel Build Settings and Environment Variables for Flutter Web
+Updated `vercel.json` with Flutter build configurations (`installCommand`, `buildCommand`, `outputDirectory`) to compile and serve the web client from `/app/build/web`. Modified `buildCommand` to pass `$SUPABASE_URL`, `$SUPABASE_ANON_KEY`, and `$RAZORPAY_KEY_ID` environment variables to the Flutter build via `--dart-define` parameters. This resolves the "Missing Supabase config" runtime error when running the deployed build.
+
 ## [2026-07-28] Budget Dashboard — reused across Admin & Principal
 Extracted `BudgetBreakdownWidget` (shared/widgets/) from Principal `BudgetScreen` to render per-category budget progress rings identically for both roles. Added budget breakdown section to Admin Dashboard inline. Also fixed Finance Overview (`admin_finance_overview_screen.dart`): removed non-existent `invoices.status`/`total_amount` columns, `emi_plans`→`payment_plans`, `allocated_amount`→`planned_amount`, `completed`→`success` payment status. Fixed `dashboard_provider.dart` same issues. Fixed pre-existing parser errors in `admin_dashboard.dart` (missing `)` closing 2 `SliverGrid`s, null-safety, type mismatches). All 5 touched files: dart analyze = 0 errors.
 

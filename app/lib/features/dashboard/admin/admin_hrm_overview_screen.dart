@@ -221,7 +221,7 @@ class AdminHrmOverviewScreen extends ConsumerWidget {
     final monthStart = DateTime(now.year, now.month, 1).toUtc().toIso8601String();
 
     final leaveRows = await client
-        .schema('finance')
+        .schema('public')
         .from('leave_requests')
         .select('id, status, created_at');
     final leaveList = List<Map<String, dynamic>>.from(leaveRows as List);

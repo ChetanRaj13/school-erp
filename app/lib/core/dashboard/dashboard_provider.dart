@@ -66,7 +66,7 @@ Future<DashboardSummary> _loadDashboardSummary(SupabaseClient client) async {
     final waiverRequestsFuture = client.schema('finance').from('waiver_requests').select('id, status, student_id, requested_amount');
     final notificationsFuture = client.schema('public').from('notifications').select('id, recipient_student_id, title, body, created_at');
 
-    await Future.wait([
+    final results = await Future.wait([
       studentsFuture,
       staffFuture,
       paymentsFuture,
@@ -81,17 +81,18 @@ Future<DashboardSummary> _loadDashboardSummary(SupabaseClient client) async {
       notificationsFuture,
     ]);
 
-    final studentsList = List<Map<String, dynamic>>.from(studentsFuture as List);
-    final staffList = List<Map<String, dynamic>>.from(staffFuture as List);
-    final paymentList = List<Map<String, dynamic>>.from(paymentsFuture as List);
-    final invoiceList = List<Map<String, dynamic>>.from(invoicesFuture as List);
-    final poList = List<Map<String, dynamic>>.from(purchaseOrdersFuture as List);
-    final vpList = List<Map<String, dynamic>>.from(vendorPaymentsFuture as List);
-    final payrollList = List<Map<String, dynamic>>.from(payrollRunsFuture as List);
-    final budgetList = List<Map<String, dynamic>>.from(budgetsFuture as List);
-    final attendanceList = List<Map<String, dynamic>>.from(attendanceFuture as List);
-    final vendorList = List<Map<String, dynamic>>.from(vendorsFuture as List);
-    final notifications = List<Map<String, dynamic>>.from(notificationsFuture as List);
+    final studentsList = List<Map<String, dynamic>>.from(results[0] as List);
+    final staffList = List<Map<String, dynamic>>.from(results[1] as List);
+    final paymentList = List<Map<String, dynamic>>.from(results[2] as List);
+    final invoiceList = List<Map<String, dynamic>>.from(results[3] as List);
+    final poList = List<Map<String, dynamic>>.from(results[4] as List);
+    final vpList = List<Map<String, dynamic>>.from(results[5] as List);
+    final payrollList = List<Map<String, dynamic>>.from(results[6] as List);
+    final budgetList = List<Map<String, dynamic>>.from(results[7] as List);
+    final attendanceList = List<Map<String, dynamic>>.from(results[8] as List);
+    final vendorList = List<Map<String, dynamic>>.from(results[9] as List);
+    final waiverRequestsList = List<Map<String, dynamic>>.from(results[10] as List);
+    final notifications = List<Map<String, dynamic>>.from(results[11] as List);
 
     // Build student name map
     final studentNameById = <String, String>{for (final s in studentsList) s['id'] as String: s['full_name'] as String};
@@ -243,9 +244,8 @@ Future<DashboardSummary> _loadDashboardSummary(SupabaseClient client) async {
       });
     }
     activities.sort((a, b) {
-      final dateA = DateTime.tryParse(a['timestamp'] as String? ?? '');
-      final dateB = DateTime.tryParse(b['timestamp'] as String? ?? '');
-      if (dateA == null || dateB == null) return 0;
+      final dateA = a['timestamp'] as DateTime? ?? DateTime.now();
+      final dateB = b['timestamp'] as DateTime? ?? DateTime.now();
       return dateB.compareTo(dateA);
     });
     final recentActivities = activities.take(5).toList();

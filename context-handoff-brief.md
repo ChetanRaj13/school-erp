@@ -1,7 +1,7 @@
 # School ERP — Context Handoff Brief
 **Project:** Coal-Coders / Chetan Raj — School ERP hackathon build
 **Supabase project:** `yhcyhwpdgqupylrnkqht` ("smart-school-fintech", ap-south-1)
-**Last updated:** 2026-07-27 (session 2), by Claude (via Supabase MCP connector — DB access only, no repo write access)
+**Last updated:** 2026-07-28, by Antigravity (configured Vercel build settings for Flutter Web)
 
 > **How to use this file:** Any AI working on this project (Claude, Grok, Claude Code, etc.)
 > should read this file plus `AGENTS.md` and the top 2 entries of `.agent-log/SESSION_LOG.md`
@@ -212,6 +212,18 @@ bonus, not a requirement — don't rely on it being in sync with this file.
 
 ## 5. Changelog
 *(Newest first. Added as part of every `NEW-UPDATE`.)*
+
+### 2026-07-28 (Vercel Build, Type Crash, Schema & Layout Fixes)
+- Configured Vercel deployment build settings in `vercel.json` (`installCommand`, `buildCommand`, `outputDirectory`) to install Flutter stable SDK, run doctor/config-enable-web, build the web client under `/app`, and output to `/app/build/web`.
+- Updated `buildCommand` to pass Vercel environment variables (`$SUPABASE_URL`, `$SUPABASE_ANON_KEY`, `$RAZORPAY_KEY_ID`) via `--dart-define` parameters to resolve compile-time configuration requirements at runtime.
+- Fixed runtime `TypeError` crash in `dashboard_provider.dart` where `studentsFuture`, `staffFuture`, etc., were cast to `List` before being resolved by `Future.wait`.
+- Fixed runtime type crash in `dashboard_provider.dart` where `timestamp` (already a `DateTime`) was cast `as String?` in sorting comparison.
+- Fixed `PostgrestException` database schema mismatch by changing schema context for the `leave_requests` query from `finance` to `public` in `admin_hrm_overview_screen.dart`.
+- Fixed the parent Fees screen crash (null check operator on null `_data`) by correcting page load trigger condition `if (_loading && _data == null)` to `if (!_loading && _data == null)` in `parent_fees_screen.dart`.
+- Fixed the Messages screen crash by resolving student classes via the `academic.class_roster` junction mapping instead of querying a non-existent `students.class_id` column in `messages_screen.dart`.
+- Redesigned and improved parent Overview dashboard layout: modified `ProgressRing` to scale label and subtitle text sizes dynamically to prevent layout clipping and boundary overflow, and structured overview cards to have matched symmetric heights (height 110).
+- Kept the rewrite rule for client-side routing.
+
 
 ### 2026-07-27 (session 3 — repo integration + fee-breakdown UI build)
 - Migration files repo-integrated: 0002 (replaces stub), 0013, 0014 placed in supabase/migrations/; 0004 deleted (dead); app/supabase/migrations/0009 deleted (redundant); 0001 cleaned of superseded students/staff blocks

@@ -98,36 +98,41 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                             children: [
                               Text('${selected.fullName} · ${selected.admissionNumber}', style: Theme.of(context).textTheme.titleMedium),
                               const SizedBox(height: 16),
-                              Row(
+                               Row(
                                 children: [
                                   Expanded(
                                     child: GlassCard(
-                                      child: Column(
-                                        children: [
-                                          ProgressRing(
-                                            value: perf.attendancePercent / 100,
-                                            centerLabel: '${perf.attendancePercent.toStringAsFixed(0)}%',
-                                            centerSubtitle: 'attendance',
-                                            size: 84,
-                                          ),
-                                        ],
+                                      child: Container(
+                                        height: 110,
+                                        alignment: Alignment.center,
+                                        child: ProgressRing(
+                                          value: perf.attendancePercent / 100,
+                                          centerLabel: '${perf.attendancePercent.toStringAsFixed(0)}%',
+                                          centerSubtitle: 'attendance',
+                                          size: 100,
+                                        ),
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: GlassCard(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          const Icon(Icons.school_outlined, color: AppColors.primary),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            perf.avgMarksPercent != null ? '${perf.avgMarksPercent!.toStringAsFixed(0)}%' : '—',
-                                            style: Theme.of(context).textTheme.headlineMedium,
-                                          ),
-                                          Text('Average marks', style: Theme.of(context).textTheme.bodySmall),
-                                        ],
+                                      child: Container(
+                                        height: 110,
+                                        alignment: Alignment.centerLeft,
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.school_outlined, color: AppColors.primary),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              perf.avgMarksPercent != null ? '${perf.avgMarksPercent!.toStringAsFixed(0)}%' : '—',
+                                              style: Theme.of(context).textTheme.headlineMedium,
+                                            ),
+                                            Text('Average marks', style: Theme.of(context).textTheme.bodySmall),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),

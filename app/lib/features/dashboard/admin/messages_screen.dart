@@ -100,14 +100,14 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
       // Resolve each child's class_teacher_id.
       for (final child in children) {
-        final student = await client
-            .schema('public')
-            .from('students')
+        final roster = await client
+            .schema('academic')
+            .from('class_roster')
             .select('class_id')
-            .eq('id', child.studentId)
+            .eq('student_id', child.studentId)
             .maybeSingle();
-        if (student == null) continue;
-        final classId = student['class_id'] as String?;
+        if (roster == null) continue;
+        final classId = roster['class_id'] as String?;
         if (classId == null) continue;
 
         final cls = await client
@@ -135,13 +135,22 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
       if (classIds.isNotEmpty) {
         // Teacher with classes — show their students.
-        final studentRows = await client
-            .schema('public')
-            .from('students')
-            .select('id, full_name, class_id')
-            .inFilter('class_id', classIds)
-            .order('full_name');
-        teacherStudents = List<Map<String, dynamic>>.from(studentRows as List);
+        final rosterRows = await client
+            .schema('academic')
+            .from('class_roster')
+            .select('student_id')
+            .inFilter('class_id', classIds);
+        final studentIds = (rosterRows as List).map((r) => r['student_id'] as String).toList();
+
+        if (studentIds.isNotEmpty) {
+          final studentRows = await client
+              .schema('public')
+              .from('students')
+              .select('id, full_name')
+              .inFilter('id', studentIds)
+              .order('full_name');
+          teacherStudents = List<Map<String, dynamic>>.from(studentRows as List);
+        }
       }
 
       // Fallback: all staff.

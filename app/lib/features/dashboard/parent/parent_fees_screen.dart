@@ -193,7 +193,7 @@ class _ParentFeesScreenState extends ConsumerState<ParentFeesScreen> {
                 orElse: () => children.first,
               );
 
-              if (_loading && _data == null) {
+              if (!_loading && _data == null) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) _loadData();
                 });
