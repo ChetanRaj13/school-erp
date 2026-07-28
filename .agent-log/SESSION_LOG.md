@@ -5,8 +5,8 @@ nd a new entry when you finish a task. Don't remove anything from the existing f
 
 ---
 
-## [2026-07-28] Reduce dart2js Optimization to Prevent Vercel OOM Crashes
-Added `--dart2js-optimization O1` and `NODE_OPTIONS="--max-old-space-size=4096"` to `build.sh`. Vercel's hobby tier strictly limits memory, and the default `O4` optimization level of `dart2js` requires more than 1.5GB of RAM for this project size, causing silent `<asynchronous suspension>` OOM crashes. Lowering the optimization to `O1` reduces memory complexity significantly and ensures successful builds within container limits.
+## [2026-07-28] Fix collection package method syntax to resolve Dart compilation crash on Vercel
+Fixed a fatal `NoSuchMethodError` during compilation in `dashboard_provider.dart`. Replaced `sortDescendingBy` (which does not exist in the collection package) with `sortedByDescending`, and `sortAscendingBy` with `sortedBy`. This resolves the silent 1m 38s Vercel build crashes where the build failed to compile `dashboard_provider.dart` after downloading dependencies.
 
 ## [2026-07-28] Remove Deprecated --web-renderer Option for Flutter 3.29+ Compatibility
 Removed the deprecated `--web-renderer` flag from `build.sh`. The latest stable Flutter version (3.29+) has removed the legacy HTML renderer and transitioned CanvasKit/SkWasm to be standard renderers, which caused the build command to fail with "Could not find an option named '--web-renderer'".

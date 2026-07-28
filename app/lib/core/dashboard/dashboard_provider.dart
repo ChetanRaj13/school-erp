@@ -184,7 +184,7 @@ Future<DashboardSummary> _loadDashboardSummary(SupabaseClient client) async {
           };
         })
         .toList()
-        .sortDescendingBy<num>((d) => ((d as Map<String, dynamic>)['amountDue'] as num?)?.toDouble() ?? 0)
+        .sortedByDescending<num>((d) => ((d as Map<String, dynamic>)['amountDue'] as num?)?.toDouble() ?? 0)
         .take(5)
         .toList();
 
@@ -206,8 +206,7 @@ Future<DashboardSummary> _loadDashboardSummary(SupabaseClient client) async {
           };
         })
         .whereType<Map<String, dynamic>>()
-        .toList()
-        .sortAscendingBy<DateTime>((d) => d['dueDate'] as DateTime? ?? DateTime.now())
+        .sortedBy<DateTime>((d) => d['dueDate'] as DateTime? ?? DateTime.now())
         .take(5)
         .toList();
 
