@@ -5,6 +5,10 @@ nd a new entry when you finish a task. Don't remove anything from the existing f
 
 ---
 
+## [2026-07-28] Add Dart VM Memory Limits and Target Single CanvasKit Web Renderer for Vercel Builds
+- Configured Vercel build script (`vercel.json`) to export `DART_VM_OPTIONS="--max-old-space-size=2560"`. This restricts the compiler's maximum heap memory and triggers aggressive garbage collection, preventing Dart VM out-of-memory (OOM) compilation crashes on Vercel's free-tier containers.
+- Specified `--web-renderer canvakit` in the build command. This compiles only the CanvasKit renderer (preserving the premium nature matte glassmorphic blurs) instead of compiling both HTML and CanvasKit fallbacks, effectively halving the compiler's memory usage and compilation time.
+
 ## [2026-07-28] Fix Release Web Compilation Mismatch and Optimize Vercel Build Commands
 - Added missing `<SortOption>` generic type parameter to `DropdownMenuItem` inside the inline sort dropdown of `SearchFilterBar`, resolving type mismatch errors (`List<DropdownMenuItem<dynamic>>` cannot be assigned to `List<DropdownMenuItem<SortOption>>`) triggered by strict Dart release compilation (`dart2js`).
 - Optimized `vercel.json` settings: enabled shallow cloning (`--depth 1`) to bypass slow history fetching/timeouts on Vercel, wrapped `--dart-define` parameters in quotes to prevent shell parsing failure on environment variable characters, and added `flutter clean` prior to build for cleaner caches.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "if [ ! -d \"flutter\" ]; then git clone --depth 1 -b stable https://github.com/flutter/flutter.git; fi && ./flutter/bin/flutter doctor && ./flutter/bin/flutter config --enable-web",
-  "buildCommand": "cd app && ../flutter/bin/flutter clean && ../flutter/bin/flutter build web --release --dart-define=SUPABASE_URL=\"$SUPABASE_URL\" --dart-define=SUPABASE_ANON_KEY=\"$SUPABASE_ANON_KEY\" --dart-define=RAZORPAY_KEY_ID=\"$RAZORPAY_KEY_ID\"",
+  "buildCommand": "cd app && ../flutter/bin/flutter clean && export DART_VM_OPTIONS=\"--max-old-space-size=2560\" && ../flutter/bin/flutter build web --release --web-renderer canvakit --dart-define=SUPABASE_URL=\"$SUPABASE_URL\" --dart-define=SUPABASE_ANON_KEY=\"$SUPABASE_ANON_KEY\" --dart-define=RAZORPAY_KEY_ID=\"$RAZORPAY_KEY_ID\"",
   "outputDirectory": "app/build/web",
   "rewrites": [
     {

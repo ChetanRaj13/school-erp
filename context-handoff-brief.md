@@ -226,6 +226,8 @@ bonus, not a requirement — don't rely on it being in sync with this file.
 - Enhanced contrast and visual visibility of the parent dashboard "Quick Links" header label on dark backgrounds by styling it white with a drop shadow.
 - Fixed release compilation type mismatch error in `search_filter_bar.dart` by adding explicit `<SortOption>` type parameter to `DropdownMenuItem` inside the mapping list, preventing `List<DropdownMenuItem<dynamic>>` to `List<DropdownMenuItem<SortOption>>` assignment errors during strict `dart2js` build compilation.
 - Optimized Vercel build parameters in `vercel.json`: enabled shallow clones (`--depth 1`) to prevent heavy clones/timeouts, wrapped `--dart-define` environment variable configurations in escaped double quotes to safeguard shell parsing against empty/special characters, and prepended a `flutter clean` phase to ensure compile caches are clear.
+- Fixed compiler crashes during release builds on constrained Vercel container instances by exporting `DART_VM_OPTIONS="--max-old-space-size=2560"` (forces aggressive garbage collection inside the Dart compiler VM).
+- Targeted a single, optimized build configuration using `--web-renderer canvakit` inside `vercel.json`'s buildCommand. This eliminates compiling multiple fallback renderers (halving memory and compiler time) while keeping premium frosted-glass filter effects active.
 - Kept the rewrite rule for client-side routing.
 
 
