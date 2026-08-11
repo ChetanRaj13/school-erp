@@ -3,6 +3,10 @@
 // separately-run Python server. Never writes to public.students directly —
 // stores a draft in documents.admission_forms with status='pending_review';
 // see the companion `document-commit` function for the human-reviewed write.
+//
+// v2: accepts JSON (base64 image) instead of multipart/form-data, matching
+// the same calling convention already proven working for document-commit via
+// the Supabase Flutter SDK's client.functions.invoke().
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -84,28 +88,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    if (!file) {
-      return new Response(JSON.stringify({ error: 'file field required (multipart/form-data)' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // JSON body now, matching document-commit's calling convention:
+    // { file_base64: string (no data: prefix), mime_type: string, file_name?: string }
+    const body = await req.json();
+    const { file_base64, mime_type, file_name } = body;
+    if (!file_base64 || !mime_type) {
+      return new Response(
+        JSON.stringify({ error: 'file_base64 and mime_type are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
-
-    const mimeType = file.type || 'image/jpeg';
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    const imageB64 = btoa(binary);
 
     let raw: any;
     let modelUsed = MODEL;
     try {
-      raw = await callOpenRouter(imageB64, mimeType, MODEL, apiKey);
+      raw = await callOpenRouter(file_base64, mime_type, MODEL, apiKey);
     } catch (e: any) {
       if ([400, 404, 429].includes(e.status)) {
-        raw = await callOpenRouter(imageB64, mimeType, FALLBACK_MODEL, apiKey);
+        raw = await callOpenRouter(file_base64, mime_type, FALLBACK_MODEL, apiKey);
         modelUsed = FALLBACK_MODEL;
       } else {
         throw e;
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
       .schema('documents')
       .from('admission_forms')
       .insert({
-        original_image_url: file.name || 'uploaded',
+        original_image_url: file_name || 'uploaded',
         extracted_json: fields,
         uncertain_fields: uncertainFields,
         status: 'pending_review',

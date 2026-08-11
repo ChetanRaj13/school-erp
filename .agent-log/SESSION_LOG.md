@@ -4,6 +4,10 @@ This file tracks recent changes and context for AI agents. Read the top 2 entrie
 
 ---
 
+## [2026-08-11] Document Upload Service & Admission Form Photo Upload in DocumentReviewScreen
+Created [document_upload_service.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/services/document_upload_service.dart) with `uploadAndExtractForm` function and updated [document_review_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/documents/document_review_screen.dart) with "Upload New Form" action using `ImagePicker`. Added loading indicator banner/button state during AI extraction, auto-refresh on success, and SnackBar error handling on `DocumentExtractionException`.
+
+
 ## [2026-08-10] Single-command local dev script start-dev.ps1 & README documentation
 Created Windows-friendly PowerShell dev script [start-dev.ps1](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/start-dev.ps1) at repo root to start both the local OMR attendance scanning microservice (`uvicorn main:app --port 8002` in `services/omr-pipeline/`) and the Flutter web app (`flutter run -d chrome` in `app/`) in one command. Added prerequisite validation (Python, uvicorn, Flutter checks), colorized status output, and documented usage in [README.md](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/README.md). Ran `flutter analyze` (0 compilation errors).
 

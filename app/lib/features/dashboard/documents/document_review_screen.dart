@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
+import '../../../core/services/document_upload_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
@@ -33,6 +35,7 @@ class DocumentReviewScreen extends ConsumerStatefulWidget {
 class _DocumentReviewScreenState extends ConsumerState<DocumentReviewScreen> {
   late Future<List<_PendingForm>> _future;
   late final SupabaseClient _client;
+  bool _isUploading = false;
 
   @override
   void initState() {
@@ -59,10 +62,95 @@ class _DocumentReviewScreenState extends ConsumerState<DocumentReviewScreen> {
         .toList();
   }
 
+  String _lookupMimeType(String name) {
+    final ext = name.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'pdf':
+        return 'application/pdf';
+      case 'jpg':
+      case 'jpeg':
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  Future<void> _uploadNewForm() async {
+    if (_isUploading) return;
+    try {
+      final picker = ImagePicker();
+      final xfile = await picker.pickImage(source: ImageSource.gallery);
+      if (xfile == null) return;
+
+      setState(() {
+        _isUploading = true;
+      });
+
+      final bytes = await xfile.readAsBytes();
+      final fileName = xfile.name;
+      final mimeType = xfile.mimeType ?? _lookupMimeType(fileName);
+
+      await uploadAndExtractForm(
+        client: _client,
+        fileBytes: bytes,
+        mimeType: mimeType,
+        fileName: fileName,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Admission form processed and added to pending review queue.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _refresh();
+    } on DocumentExtractionException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to upload/extract form: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _isUploading ? null : _uploadNewForm,
+        icon: _isUploading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.add_a_photo),
+        label: Text(_isUploading ? 'Extracting AI Form...' : 'Upload New Form'),
+        backgroundColor: AppColors.primary,
+      ),
       body: WarmBackdrop(
         child: SafeArea(
           child: FutureBuilder<List<_PendingForm>>(
@@ -89,11 +177,22 @@ class _DocumentReviewScreenState extends ConsumerState<DocumentReviewScreen> {
                       const Icon(Icons.inbox_outlined, size: 48),
                       const SizedBox(height: 12),
                       const Text('No forms awaiting review.'),
-                      const SizedBox(height: 8),
-                      FilledButton.tonalIcon(
-                        onPressed: _refresh,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh'),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: _isUploading ? null : _uploadNewForm,
+                            icon: const Icon(Icons.add_a_photo),
+                            label: const Text('Upload New Form'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.tonalIcon(
+                            onPressed: _refresh,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Refresh'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -104,11 +203,42 @@ class _DocumentReviewScreenState extends ConsumerState<DocumentReviewScreen> {
                 children: [
                   Text('Document Review', style: Theme.of(context).textTheme.headlineMedium),
                   const SizedBox(height: 12),
+                  if (_isUploading) ...[
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      child: const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Extracting admission form data via AI model... Please wait.',
+                                style: TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   Row(
                     children: [
                       Text('${forms.length} pending',
                           style: Theme.of(context).textTheme.titleMedium),
                       const Spacer(),
+                      FilledButton.icon(
+                        onPressed: _isUploading ? null : _uploadNewForm,
+                        icon: const Icon(Icons.add_a_photo, size: 18),
+                        label: const Text('Upload Form'),
+                      ),
+                      const SizedBox(width: 8),
                       IconButton(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh),
@@ -204,7 +334,7 @@ class _FormCardState extends State<_FormCard> {
       if (response.status != 200) {
         setState(() {
           _error = 'Commit failed (HTTP ${response.status}): '
-              '${response.error ?? response.data}';
+              '${response.data}';
           _committing = false;
         });
         return;
@@ -291,7 +421,7 @@ class _FormCardState extends State<_FormCard> {
               if (_success != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(_success!, style: TextStyle(color: Colors.green)),
+                  child: Text(_success!, style: const TextStyle(color: Colors.green)),
                 ),
               Row(
                 children: [
