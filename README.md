@@ -70,6 +70,14 @@ flutter run -d chrome
 docker compose up -d
 ```
 
+### One-Command Local Development (Windows / PowerShell)
+
+To launch both the local OMR attendance service (FastAPI on port 8002) and the Flutter web app together with a single command:
+
+```powershell
+.\start-dev.ps1
+```
+
 You'll need a `.env` file (see `.env.example`) with your Supabase project URL, anon key, and Razorpay test keys. These aren't committed — ask whoever's holding the project credentials.
 
 Database migrations are applied directly to the shared Supabase project; there's no local migration step required to run the app against it.

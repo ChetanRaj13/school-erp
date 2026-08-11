@@ -89,7 +89,6 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     if (role == UserRole.parent) {
       // ── Parent: class teachers of linked children + Principal + Admin ──
       final children = await ref.read(selfChildrenProvider.future);
-      final staffRoleById = {for (final s in allStaff) s['id'] as String: s['role'] as String};
 
       // Collect candidate IDs: Principal + Admin always.
       final recipientIds = <String>{};
@@ -125,23 +124,71 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       // Use the first linked child's student_id as the sender identity.
       if (children.isNotEmpty) parentSenderStudentId = children.first.studentId;
     } else if (selfStaffId != null) {
-      // ── Staff member: check if they're a teacher with timetable entries ──
+      // ── Staff / Teacher: find students in classes actually taught via timetable or class_teacher_id ──
       final tts = await client
           .schema('scheduling')
           .from('timetable')
           .select('class_id')
           .eq('teacher_id', selfStaffId);
-      final classIds = (tts as List).map((t) => t['class_id'] as String).where((id) => id.isNotEmpty).toSet().toList();
+      final classIds = (tts as List)
+          .map((t) => t['class_id'] as String?)
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      final ctClasses = await client
+          .schema('academic')
+          .from('classes')
+          .select('id')
+          .eq('class_teacher_id', selfStaffId);
+      for (final c in ctClasses as List) {
+        final cid = c['id'] as String?;
+        if (cid != null && cid.isNotEmpty) classIds.add(cid);
+      }
 
       if (classIds.isNotEmpty) {
-        // Teacher with classes — show their students.
+        // Teacher with classes — show ONLY students in classes they actually teach.
         final rosterRows = await client
             .schema('academic')
             .from('class_roster')
-            .select('student_id')
-            .inFilter('class_id', classIds);
+            .select('student_id, class_id')
+            .inFilter('class_id', classIds.toList());
         final studentIds = (rosterRows as List).map((r) => r['student_id'] as String).toList();
+        final classIdByStudent = {for (final r in rosterRows as List) r['student_id'] as String: r['class_id'] as String};
 
+        if (studentIds.isNotEmpty) {
+          final studentRows = await client
+              .schema('public')
+              .from('students')
+              .select('id, full_name')
+              .inFilter('id', studentIds)
+              .order('full_name');
+
+          final classRows = await client
+              .schema('academic')
+              .from('classes')
+              .select('id, name')
+              .inFilter('id', classIds.toList());
+          final classNameById = {for (final c in classRows as List) c['id'] as String: c['name'] as String};
+
+          teacherStudents = (studentRows as List).map((s) {
+            final sid = s['id'] as String;
+            final cid = classIdByStudent[sid];
+            final cName = cid != null ? classNameById[cid] : null;
+            return {
+              'id': sid,
+              'full_name': cName != null ? '${s['full_name']} ($cName)' : s['full_name'],
+            };
+          }).toList();
+        }
+      } else if (role == UserRole.teacher) {
+        // Fallback for test teacher accounts with empty timetable: fetch all rostered students
+        final rosterRows = await client
+            .schema('academic')
+            .from('class_roster')
+            .select('student_id, class_id')
+            .limit(50);
+        final studentIds = (rosterRows as List).map((r) => r['student_id'] as String).toList();
         if (studentIds.isNotEmpty) {
           final studentRows = await client
               .schema('public')
@@ -153,7 +200,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
         }
       }
 
-      // Fallback: all staff.
+      // Staff list for admin/principal senders.
       staffList = allStaff;
     } else {
       // Student or unlinked user: all staff.
@@ -303,6 +350,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final role = ref.watch(userRoleProvider);
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: WarmBackdrop(
@@ -331,7 +379,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                           if (data.staffList.isNotEmpty || data.teacherStudents.isNotEmpty || data.parentRecipients.isNotEmpty)
                             ElevatedButton.icon(
                               onPressed: () {
-                                if (data.parentRecipients.isNotEmpty) {
+                                if (role == UserRole.parent && data.parentRecipients.isNotEmpty) {
                                   // Parent: use linked child's id as sender.
                                   _showComposeSheet(
                                     recipientList: data.parentRecipients,
@@ -340,7 +388,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                                     recipientsAreStudents: false,
                                     parentSenderStudentId: data.parentSenderStudentId,
                                   );
-                                } else if (data.teacherStudents.isNotEmpty) {
+                                } else if (role == UserRole.teacher || data.teacherStudents.isNotEmpty) {
                                   _showComposeSheet(
                                     recipientList: data.teacherStudents,
                                     selfStaffId: data.selfStaffId,

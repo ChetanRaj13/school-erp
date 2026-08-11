@@ -147,7 +147,12 @@ class TeacherDashboard extends ConsumerWidget {
     final classIds = timetableRows.map((r) => r['class_id']).toSet().toList();
 
     final subjects = await client.schema('academic').from('subjects').select('id, name').inFilter('id', subjectIds);
-    final classes = await client.schema('academic').from('classes').select('id, name').inFilter('id', classIds);
+    final classes = await client
+        .schema('academic')
+        .from('classes')
+        .select('id, name')
+        .inFilter('id', classIds)
+        .eq('is_archived', false);
     final subjectNameById = {for (final s in subjects as List) s['id']: s['name']};
     final classNameById = {for (final c in classes as List) c['id']: c['name']};
 

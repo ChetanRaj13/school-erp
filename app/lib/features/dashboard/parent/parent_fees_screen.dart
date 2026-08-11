@@ -78,10 +78,6 @@ class _ParentFeesScreenState extends ConsumerState<ParentFeesScreen> {
   }
 
   Future<_FeesData> _load(SupabaseClient client, String studentId) async {
-    // ... existing loading logic unchanged except we'll apply search/filter later ...
-
-    final students = await client.schema('public').from('students').select('id, full_name, admission_number');
-
     final invoicesRaw = await client
         .schema('finance')
         .from('invoices')

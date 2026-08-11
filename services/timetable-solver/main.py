@@ -100,7 +100,7 @@ def _load_constraints() -> dict:
     # 1. Classes
     classes_resp, err = _safe_fetch(
         lambda: _supabase.schema("academic").table("classes")
-            .select("*").execute()
+            .select("*").eq("is_archived", False).execute()
     )
     if err:
         raise HTTPException(status_code=500, detail=f"Classes fetch failed: {err}")

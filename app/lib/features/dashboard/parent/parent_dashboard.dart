@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/self_children_provider.dart';
@@ -12,6 +11,7 @@ import '../../../shared/widgets/warm_backdrop.dart';
 import '../../../shared/widgets/cinematic_hero_header.dart';
 import '../../../shared/widgets/apple_style_dock.dart';
 import '../../../shared/widgets/border_trail_card.dart';
+import 'providers/parent_providers.dart';
 
 /// Parent front page (the shell sidebar's "Overview" item).
 ///
@@ -34,7 +34,6 @@ class _ParentDashboardState extends ConsumerState<ParentDashboard> {
   @override
   Widget build(BuildContext context) {
     final childrenAsync = ref.watch(selfChildrenProvider);
-    final client = ref.watch(supabaseClientProvider);
     final role = ref.watch(userRoleProvider);
 
     return Scaffold(
@@ -55,6 +54,8 @@ class _ParentDashboardState extends ConsumerState<ParentDashboard> {
                     (c) => c.studentId == _selectedStudentId,
                     orElse: () => children.first,
                   );
+
+                  final summaryAsync = ref.watch(childSummaryProvider(selected.studentId));
 
                   return CustomScrollView(
                     slivers: [
@@ -101,16 +102,10 @@ class _ParentDashboardState extends ConsumerState<ParentDashboard> {
                         sliver: SliverFillRemaining(
                           fillOverscroll: true,
                           hasScrollBody: false,
-                          child: FutureBuilder<_ChildSummary>(
-                            future: _loadChildSummary(client, selected.studentId),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState != ConnectionState.done) {
-                                return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                              }
-                              if (snapshot.hasError) {
-                                return Text('Failed to load: ${snapshot.error}');
-                              }
-                              final s = snapshot.data!;
+                          child: summaryAsync.when(
+                            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                            error: (e, _) => Center(child: Text('Failed to load: $e')),
+                            data: (s) {
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -134,8 +129,9 @@ class _ParentDashboardState extends ConsumerState<ParentDashboard> {
                                               icon: const Icon(Icons.refresh, size: 18, color: AppColors.textSecondary),
                                               onPressed: () async {
                                                 setState(() => _isRefreshing = true);
-                                                await Future.delayed(const Duration(seconds: 2));
-                                                if (mounted) setState(() {});
+                                                ref.invalidate(childSummaryProvider(selected.studentId));
+                                                await ref.read(childSummaryProvider(selected.studentId).future);
+                                                if (mounted) setState(() => _isRefreshing = false);
                                               },
                                             ),
                                           ]),
@@ -204,24 +200,6 @@ class _ParentDashboardState extends ConsumerState<ParentDashboard> {
       ),
     );
   }
-
-  Future<_ChildSummary> _loadChildSummary(SupabaseClient client, String studentId) async {
-    final invoices = await client.schema('finance').from('invoices').select('amount_due, amount_paid').eq('student_id', studentId);
-    double due = 0, paid = 0;
-    for (final row in invoices as List) {
-      due += (row['amount_due'] as num).toDouble();
-      paid += (row['amount_paid'] as num).toDouble();
-    }
-    final attendance = await client.schema('attendance').from('records').select('date, status').eq('student_id', studentId).order('date', ascending: false).limit(10);
-    return _ChildSummary(amountDue: due, amountPaid: paid, attendanceRecords: List<Map<String, dynamic>>.from(attendance as List));
-  }
-}
-
-class _ChildSummary {
-  _ChildSummary({required this.amountDue, required this.amountPaid, required this.attendanceRecords});
-  final double amountDue;
-  final double amountPaid;
-  final List<Map<String, dynamic>> attendanceRecords;
 }
 
 class _NoChildrenLinkedView extends StatelessWidget {

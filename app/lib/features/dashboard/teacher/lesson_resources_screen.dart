@@ -41,7 +41,13 @@ class _LessonResourcesScreenState extends ConsumerState<LessonResourcesScreen> {
       final timetableRows = await client.schema('scheduling').from('timetable').select('class_id').eq('teacher_id', selfStaffId);
       final classIds = (timetableRows as List).map((r) => r['class_id'] as String).toSet().toList();
       if (classIds.isNotEmpty) {
-        final classesRaw = await client.schema('academic').from('classes').select('id, name').inFilter('id', classIds);
+        final classesRaw = await client
+            .schema('academic')
+            .from('classes')
+            .select('id, name')
+            .inFilter('id', classIds)
+            .eq('is_archived', false)
+            .order('name');
         classes = List<Map<String, dynamic>>.from(classesRaw as List);
       }
     }

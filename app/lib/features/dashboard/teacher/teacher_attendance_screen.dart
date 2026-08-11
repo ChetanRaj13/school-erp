@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/self_record_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/line_chart.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
@@ -44,8 +45,36 @@ class _TeacherAttendanceScreenState extends ConsumerState<TeacherAttendanceScree
     final classIds = (timetableRows as List).map((r) => r['class_id'] as String).toSet().toList();
     if (classIds.isEmpty) return _AttendanceData(selfStaffId: selfStaffId, classes: []);
 
-    final classes = await client.schema('academic').from('classes').select('id, name').inFilter('id', classIds);
-    return _AttendanceData(selfStaffId: selfStaffId, classes: List<Map<String, dynamic>>.from(classes as List));
+    final classes = await client
+        .schema('academic')
+        .from('classes')
+        .select('id, name')
+        .inFilter('id', classIds)
+        .eq('is_archived', false)
+        .order('name');
+    final classList = List<Map<String, dynamic>>.from(classes as List);
+
+    // Rank classes by historical attendance count so default selection has the most data (7-A/6-A)
+    try {
+      final counts = <String, int>{};
+      await Future.wait(classIds.map((cid) async {
+        final res = await client
+            .schema('attendance')
+            .from('records')
+            .select('id')
+            .eq('class_id', cid)
+            .count(CountOption.exact);
+        counts[cid] = res.count;
+      }));
+      classList.sort((a, b) {
+        final countA = counts[a['id']] ?? 0;
+        final countB = counts[b['id']] ?? 0;
+        if (countB != countA) return countB.compareTo(countA);
+        return (a['name'] as String).compareTo(b['name'] as String);
+      });
+    } catch (_) {}
+
+    return _AttendanceData(selfStaffId: selfStaffId, classes: classList);
   }
 
   Future<List<Map<String, dynamic>>> _loadRoster(String classId) async {
@@ -67,6 +96,51 @@ class _TeacherAttendanceScreenState extends ConsumerState<TeacherAttendanceScree
       _presentByStudentId.putIfAbsent(r['student_id'] as String, () => true);
     }
     return rows;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadAttendanceTrend(String classId) async {
+    final client = ref.read(supabaseClientProvider);
+    try {
+      final res = await client.schema('analytics').rpc('get_attendance_trend', params: {'p_class_id': classId});
+      final list = List<Map<String, dynamic>>.from(res as List);
+      if (list.length >= 2) return list;
+    } catch (_) {
+      try {
+        final res = await client.rpc('get_attendance_trend', params: {'p_class_id': classId});
+        final list = List<Map<String, dynamic>>.from(res as List);
+        if (list.length >= 2) return list;
+      } catch (_) {}
+    }
+
+    // Try computing directly from attendance.records for this class
+    try {
+      final recordsRaw = await client
+          .schema('attendance')
+          .from('records')
+          .select('date, status')
+          .eq('class_id', classId);
+      final records = List<Map<String, dynamic>>.from(recordsRaw as List);
+      if (records.isNotEmpty) {
+        final byMonth = <String, List<String>>{};
+        for (final r in records) {
+          final dateStr = r['date'] as String?;
+          if (dateStr == null || dateStr.length < 7) continue;
+          final month = dateStr.substring(0, 7);
+          byMonth.putIfAbsent(month, () => []).add(r['status'] as String? ?? 'absent');
+        }
+        if (byMonth.length >= 2) {
+          final sortedMonths = byMonth.keys.toList()..sort();
+          return sortedMonths.map((m) {
+            final stList = byMonth[m]!;
+            final presentCount = stList.where((s) => s == 'present').length;
+            final pct = (presentCount / stList.length) * 100;
+            return {'month': m, 'pct_present': double.parse(pct.toStringAsFixed(1))};
+          }).toList();
+        }
+      }
+    } catch (_) {}
+
+    return [];
   }
 
   Future<void> _submit(String classId, List<Map<String, dynamic>> roster) async {
@@ -134,6 +208,44 @@ class _TeacherAttendanceScreenState extends ConsumerState<TeacherAttendanceScree
                       decoration: const InputDecoration(labelText: 'Class'),
                       items: data.classes.map((c) => DropdownMenuItem(value: c['id'] as String, child: Text(c['name'] as String))).toList(),
                       onChanged: (v) => setState(() => _selectedClassId = v),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    child: FutureBuilder<List<Map<String, dynamic>>>(
+                      key: ValueKey('trend-$_selectedClassId'),
+                      future: _loadAttendanceTrend(_selectedClassId!),
+                      builder: (context, snapshot) {
+                        final trend = snapshot.data ?? [];
+                        if (trend.length < 2) {
+                          return GlassCard(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.show_chart_outlined, color: AppColors.textSecondary, size: 20),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Not enough historical data yet for this class',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        final labels = trend.map((t) => t['month']?.toString() ?? '').toList();
+                        final values = trend.map((t) => (t['pct_present'] as num?)?.toDouble() ?? 0.0).toList();
+                        return SizedBox(
+                          height: 160,
+                          child: LineChart(
+                            title: 'Attendance Trend (% Present)',
+                            labels: labels,
+                            values: values,
+                            maxValue: 100.0,
+                            chartColor: AppColors.primary,
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Expanded(

@@ -31,13 +31,6 @@ class _PayrollScreenState extends ConsumerState<PayrollScreen> {
     _future = _load();
   }
 
-  void _showSnack(String message, {bool isError = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: isError ? AppColors.error : AppColors.success),
-    );
-  }
-
   Future<_PayrollData> _load() async {
     final client = ref.read(supabaseClientProvider);
 
@@ -149,17 +142,20 @@ class _PayrollScreenState extends ConsumerState<PayrollScreen> {
     );
   }
 
-  List<Map<String, dynamic>> _filterPayrollRuns(List<Map<String, dynamic>> runs) {
+  List<Map<String, dynamic>> _filterPayrollRuns(List<Map<String, dynamic>> runs, Map<String, String> nameById) {
     var filtered = runs;
 
     // Search filter
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       filtered = filtered.where((run) {
-        final employeeName = /* would need staff lookup */ '';
-        return run['pay_period'].toString().toLowerCase().contains(query) ||
-               run['net_amount'].toString().contains(_searchQuery) ||
-               employeeName.toLowerCase().contains(query);
+        final employeeName = (nameById[run['employee_id']] ?? '').toLowerCase();
+        final payPeriod = (run['pay_period'] as String? ?? '').toLowerCase();
+        final status = (run['status'] as String? ?? '').toLowerCase();
+        return employeeName.contains(query) ||
+               payPeriod.contains(query) ||
+               status.contains(query) ||
+               run['net_amount'].toString().contains(_searchQuery);
       }).toList();
     }
 
@@ -221,7 +217,6 @@ class _PayrollScreenState extends ConsumerState<PayrollScreen> {
                         onSearch: (value) {
                           setState(() {
                             _searchQuery = value;
-                            _future = _load();
                           });
                         },
                         sorts: [
@@ -249,7 +244,7 @@ class _PayrollScreenState extends ConsumerState<PayrollScreen> {
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          _filterPayrollRuns(data.runs).map((run) {
+                          _filterPayrollRuns(data.runs, nameById).map((run) {
                             final status = run['status'] as String;
                             final statusColor = switch (status) {
                               'paid' => AppColors.success,

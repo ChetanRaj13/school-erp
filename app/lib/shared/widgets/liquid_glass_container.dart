@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+import 'package:flutter/foundation.dart';
+
 /// Flutter port of the `.liquid-glass` CSS effect: a near-transparent blurred
 /// surface with a subtle gradient hairline border (top/bottom brighter than
 /// the sides, mimicking the CSS mask/xor border trick).
@@ -31,29 +33,38 @@ class LiquidGlassContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final content = CustomPaint(
+      painter: _GradientBorderPainter(borderRadius: borderRadius),
+      child: Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: fillOpacity),
+          borderRadius: borderRadius,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.1),
+              blurRadius: 1,
+              spreadRadius: 0,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: child,
+      ),
+    );
+
+    if (kIsWeb) {
+      return ClipRRect(
+        borderRadius: borderRadius,
+        child: content,
+      );
+    }
+
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-        child: CustomPaint(
-          painter: _GradientBorderPainter(borderRadius: borderRadius),
-          child: Container(
-            padding: padding,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: fillOpacity),
-              borderRadius: borderRadius,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  blurRadius: 1,
-                  spreadRadius: 0,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            child: child,
-          ),
-        ),
+        child: content,
       ),
     );
   }

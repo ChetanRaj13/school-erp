@@ -1,9 +1,41 @@
 # Session Log
 
-This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; appe
-nd a new entry when you finish a task. Don't remove anything from the existing file
+This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; append a new entry when you finish a task. Don't remove anything from the existing file
 
 ---
+
+## [2026-08-10] Single-command local dev script start-dev.ps1 & README documentation
+Created Windows-friendly PowerShell dev script [start-dev.ps1](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/start-dev.ps1) at repo root to start both the local OMR attendance scanning microservice (`uvicorn main:app --port 8002` in `services/omr-pipeline/`) and the Flutter web app (`flutter run -d chrome` in `app/`) in one command. Added prerequisite validation (Python, uvicorn, Flutter checks), colorized status output, and documented usage in [README.md](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/README.md). Ran `flutter analyze` (0 compilation errors).
+
+## [2026-08-10] Wire 3 analytics database functions into Teacher screens
+Integrated backend analytics RPC calls into 3 teacher screens: `analytics.get_attendance_trend` into [teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_attendance_screen.dart) displaying class attendance trend line chart above roster; `analytics.get_grade_trend` into [gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/gradebook_screen.dart) displaying class grade trend line chart above gradebook table; and `analytics.get_at_risk_students` into [teacher_summary_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_summary_screen.dart) adding "Students Needing Attention" section with visual risk highlights (red accent/badge for High Risk, amber for Medium Risk, sorted worst-first). Wrapped all RPC calls with fallback try/catch. Verified live database functions return expected JSON datasets and clean release build (`flutter build web --release` succeeded).
+
+## [2026-08-09] Wire 5 analytics database functions into Admin/Principal screens
+Added `get_attendance_trend()` chart to `admin_hrm_overview_screen.dart` (replaced "not yet in use" placeholder). Added `get_revenue_trend()` bar chart and `get_budget_variance()` over-budget-flagged table to `admin_finance_overview_screen.dart`. Added full "Insights" section to `principal_dashboard.dart` with 5 analytics calls: `get_grade_trend()` (line chart), `get_at_risk_students()` (summary + expandable list with risk badges), `get_attendance_grade_correlation()` (insight card), `get_cohort_comparison()` (DataTable), `get_admission_trend()` (bar chart). All RPC calls wrapped in try/catch for graceful fallback. Verified zero compilation errors via `dart analyze` (only info-level const lints remain).
+
+## [2026-08-09] Teacher announcement class_id targeting & Messages compose recipient filtering
+Enabled class targeting in [announcements_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/announcements_screen.dart) allowing teachers and staff to target announcements to "School-wide (all classes)" or "My Class" (fetching taught classes via `scheduling.timetable` and `academic.classes.class_teacher_id`). Updated [messages_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/messages_screen.dart) for Teacher senders to restrict compose recipients specifically to students in classes they teach (displaying student name and class badge), preventing exposure of full school recipient list to teachers. Verified clean `flutter build web --release` build (0 errors).
+
+## [2026-08-09] Fix existing GST PDF retrieval and real in-memory list filtering across all sections
+Fixed `_WorkspaceToggle` in `role_shell.dart` to trigger `context.go()` navigation to workspace overviews on switch. Fixed `SearchFilterBar` stateful controller bug across all search inputs in `search_filter_bar.dart`. Enhanced GST tax invoice generator in `fee_management_screen.dart` to automatically open the generated PDF in a new browser tab via `url_launcher`. Updated waiver disbursement cards in `waiver_requests_screen.dart` to display applied date details. Verified clean `flutter build web --release` compilation (0 errors).
+
+## [2026-08-09] Build Admin workspace split, waiver disbursement, GST invoice trigger, and fix web server
+Implemented Admin HR/Finance workspace toggle in sidebar and shell routing (`/admin/hr-overview`, `/admin/finance-overview`, `/admin/approvals/hr`, `/admin/approvals/finance`, `/admin/recent-payments`, `/admin/bank-reconciliation`). Added waiver disbursement action in `waiver_requests_screen.dart` and GST Tax Invoice PDF generation trigger in `fee_management_screen.dart`. Resolved web 404 blank screen issue by completing full web release build and serving live via static server on port 8080.
+
+## [2026-08-09] Reorganize migration sequence and resolve Docker port collision
+Saved finance schema export to `supabase/migrations/0019_finance_schema.sql` and restored `0002_finance_schema.sql` stub. Placed `0009_auth_linkage.sql` into `supabase/migrations/`. Reassigned `document-extraction` microservice to port 8005 (resolving collision with `timetable-solver` on 8003) across `docker-compose.yml`, `Dockerfile`, `main.py`, `.env.example`, and `api_endpoints.dart`. Verified clean output via `docker compose config`.
+
+## [2026-08-08] Filter out archived classes from UI and timetable solver
+Applied `.eq('is_archived', false)` to all active class queries across admin/teacher screens (`timetable_grid_screen.dart`, `teacher_assignments_screen.dart`, `announcements_screen.dart`, `gradebook_screen.dart`, `teacher_attendance_screen.dart`, `teacher_summary_screen.dart`, `teacher_dashboard.dart`, `lesson_resources_screen.dart`) and `services/timetable-solver/main.py`. This ensures synthetic 3-year historical scaffolding classes (3-A/B, 4-A/B, 5-A/B) never appear in current-use dropdowns and views.
+
+## [2026-08-04] Optimize parent dashboard performance
+Migrated database queries in `ParentDashboard` and `ParentOverviewScreen` to Riverpod providers (`childSummaryProvider` and `childPerformanceProvider`) to cache fetches and eliminate layout thrashing from `FutureBuilder` recreations. Optimized glassmorphic container blurs and cinematic hero scaling animations to conditionally bypass heavy rendering on Web.
+
+## [2026-08-04] Fix compilation errors blocking flutter run
+Fixed compilation errors in `dashboard_provider.dart` (replaced `sortedByDescending` with `sortedBy` and `.reversed`), `search_filter_bar.dart` (replaced `dense: true` with `isDense: true` on `DropdownButton`), and `budget_provider.dart` (fixed relative import path and map lookup null-safety warning).
+
+## [2026-08-04] Git pull and Agent sync
+Fetched and pulled the latest commits from origin/main (up to 91d88be). Verified that the AGENTS.md, CLAUDE.md, and GEMINI.md files are synchronized correctly.
 
 ## [2026-07-28] Fix collection package method syntax to resolve Dart compilation crash on Vercel
 Fixed a fatal `NoSuchMethodError` during compilation in `dashboard_provider.dart`. Replaced `sortDescendingBy` (which does not exist in the collection package) with `sortedByDescending`, and `sortAscendingBy` with `sortedBy`. This resolves the silent 1m 38s Vercel build crashes where the build failed to compile `dashboard_provider.dart` after downloading dependencies.

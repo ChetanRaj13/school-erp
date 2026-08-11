@@ -91,7 +91,6 @@ Future<DashboardSummary> _loadDashboardSummary(SupabaseClient client) async {
     final budgetList = List<Map<String, dynamic>>.from(results[7] as List);
     final attendanceList = List<Map<String, dynamic>>.from(results[8] as List);
     final vendorList = List<Map<String, dynamic>>.from(results[9] as List);
-    final waiverRequestsList = List<Map<String, dynamic>>.from(results[10] as List);
     final notifications = List<Map<String, dynamic>>.from(results[11] as List);
 
     // Build student name map
@@ -184,7 +183,8 @@ Future<DashboardSummary> _loadDashboardSummary(SupabaseClient client) async {
           };
         })
         .toList()
-        .sortedByDescending<num>((d) => ((d as Map<String, dynamic>)['amountDue'] as num?)?.toDouble() ?? 0)
+        .sortedBy<num>((d) => ((d as Map<String, dynamic>)['amountDue'] as num?)?.toDouble() ?? 0)
+        .reversed
         .take(5)
         .toList();
 

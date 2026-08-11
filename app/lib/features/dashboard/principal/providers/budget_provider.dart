@@ -4,7 +4,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/auth/auth_providers.dart';
+import '../../../../core/auth/auth_providers.dart';
 import '../models/budget_models.dart';
 
 // State container for budget dashboard
@@ -227,7 +227,7 @@ class BudgetDashboardHolder extends StateNotifier<BudgetDashboardState> {
     if (!result.containsKey('Administrative')) {
       result['Administrative'] = 0.0;
     }
-    result['Administrative'] += totalPayrollNet;
+    result['Administrative'] = (result['Administrative'] ?? 0.0) + totalPayrollNet;
 
     return result;
   }

@@ -5,7 +5,7 @@ import 'utils.dart';
 
 /// A reusable search, filter, and sort bar component that provides consistent
 /// UI across all list-based screens in the application.
-class SearchFilterBar extends StatelessWidget {
+class SearchFilterBar extends StatefulWidget {
   final String? title;
   final String hintText;
   final ValueChanged<String>? onSearch;
@@ -34,26 +34,54 @@ class SearchFilterBar extends StatelessWidget {
   });
 
   @override
+  State<SearchFilterBar> createState() => _SearchFilterBarState();
+}
+
+class _SearchFilterBarState extends State<SearchFilterBar> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.searchQuery ?? '');
+  }
+
+  @override
+  void didUpdateWidget(SearchFilterBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.searchQuery != null && widget.searchQuery != _controller.text) {
+      _controller.text = widget.searchQuery!;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final showClearButton = showClearSearch && (searchQuery?.isNotEmpty ?? false) && onSearch != null;
-    final hasSorts = sorts != null && sorts!.isNotEmpty;
+    final showClearButton = widget.showClearSearch && (_controller.text.isNotEmpty) && widget.onSearch != null;
+    final hasSorts = widget.sorts != null && widget.sorts!.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (title != null) ...[
+          if (widget.title != null) ...[
             Text(
-              title!,
+              widget.title!,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
           ],
           TextField(
+            controller: _controller,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
-              hintText: hintText,
+              hintText: widget.hintText,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadii.button),
                 borderSide: BorderSide(color: AppColors.glassBorder),
@@ -70,7 +98,10 @@ class SearchFilterBar extends StatelessWidget {
                         if (showClearButton)
                           IconButton(
                             icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () => onSearch?.call(''),
+                            onPressed: () {
+                              _controller.clear();
+                              widget.onSearch?.call('');
+                            },
                             splashRadius: 20,
                           ),
                         if (hasSorts) ...[
@@ -85,15 +116,15 @@ class SearchFilterBar extends StatelessWidget {
                             ),
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<SortOption>(
-                                value: sorts!.firstWhere((s) => s.value == currentSortValue, orElse: () => sorts!.first),
-                                items: sorts!.map((sort) => DropdownMenuItem<SortOption>(
+                                value: widget.sorts!.firstWhere((s) => s.value == widget.currentSortValue, orElse: () => widget.sorts!.first),
+                                items: widget.sorts!.map((sort) => DropdownMenuItem<SortOption>(
                                   value: sort,
                                   child: Text(sort.label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                 )).toList(),
-                                onChanged: (value) => onSortSelected?.call(value!),
+                                onChanged: (value) => widget.onSortSelected?.call(value!),
                                 style: TextStyle(color: AppColors.textPrimary),
                                 icon: const Icon(Icons.tune_outlined, size: 16, color: AppColors.primary),
-                                dense: true,
+                                isDense: true,
                               ),
                             ),
                           ),
@@ -102,16 +133,15 @@ class SearchFilterBar extends StatelessWidget {
                     )
                   : null,
             ),
-            onChanged: onSearch,
-            controller: searchQuery != null && onSearch != null
-                ? TextEditingController(text: searchQuery)
-                : null,
+            onChanged: (val) {
+              widget.onSearch?.call(val);
+            },
           ),
           // Filter dropdowns
-          if (filterGroups != null && filterGroups!.isNotEmpty) ...[
+          if (widget.filterGroups != null && widget.filterGroups!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Row(
-              children: _buildFilterRow(context, filterGroups!),
+              children: _buildFilterRow(context, widget.filterGroups!),
             ),
           ],
         ],
@@ -127,7 +157,7 @@ class SearchFilterBar extends StatelessWidget {
         options: group.options,
         current: group.currentValue ?? group.options.first.value,
         onSelected: (value) {
-          onFilterChanged?.call(FilterGroup(
+          widget.onFilterChanged?.call(FilterGroup(
             title: group.title,
             options: group.options,
             currentValue: value,

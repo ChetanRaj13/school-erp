@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/line_chart.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/stat_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
@@ -160,39 +161,55 @@ class AdminHrmOverviewScreen extends ConsumerWidget {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                     sliver: SliverToBoxAdapter(
-                      child: Text('Staff Attendance', style: Theme.of(context).textTheme.titleMedium),
+                      child: Text('Staff Attendance Trend', style: Theme.of(context).textTheme.titleMedium),
                     ),
                   ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                    sliver: SliverToBoxAdapter(
-                      child: GlassCard(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              Icon(Icons.info_outline, color: AppColors.textSecondary),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Not yet in use', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'staff_attendance table exists but has no rows. '
-                                      'Once staff begin logging attendance, summary stats will appear here.',
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
-                                    ),
-                                  ],
+                  if (data.attendanceTrend.isEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      sliver: SliverToBoxAdapter(
+                        child: GlassCard(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline, color: AppColors.textSecondary),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('No attendance data yet', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Once attendance is recorded, a monthly trend will appear here.',
+                                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      sliver: SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 200,
+                          child: LineChart(
+                            values: data.attendanceTrend.map((e) => e.pctPresent).toList(),
+                            labels: data.attendanceTrend.map((e) => e.month).toList(),
+                            title: 'Monthly Attendance %',
+                            chartColor: AppColors.primary,
+                            maxValue: 100,
                           ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               );
             },
@@ -246,6 +263,19 @@ class AdminHrmOverviewScreen extends ConsumerWidget {
             (r['created_at'] as String).compareTo(monthStart) >= 0)
         .fold<double>(0, (sum, r) => sum + (r['net_amount'] as num).toDouble());
 
+    // ── Attendance trend (school-wide) ──
+    List<_AttendanceTrendPoint> attendanceTrend = [];
+    try {
+      final trendRes = await client.schema('analytics').rpc('get_attendance_trend');
+      final trendList = List<Map<String, dynamic>>.from(trendRes as List);
+      attendanceTrend = trendList.map((r) => _AttendanceTrendPoint(
+        month: (r['month'] as String?) ?? '',
+        pctPresent: (r['pct_present'] as num?)?.toDouble() ?? 0,
+      )).toList();
+    } catch (_) {
+      // RPC may not exist or user lacks permission — show empty state
+    }
+
     return _HrmOverviewData(
       totalStaff: totalStaff,
       headcountByRole: headcountByRole,
@@ -254,6 +284,7 @@ class AdminHrmOverviewScreen extends ConsumerWidget {
       leaveRejectedMonth: leaveRejectedMonth,
       payrollPending: payrollPending,
       payrollPaidThisMonth: payrollPaidThisMonth,
+      attendanceTrend: attendanceTrend,
     );
   }
 }
@@ -267,6 +298,7 @@ class _HrmOverviewData {
     required this.leaveRejectedMonth,
     required this.payrollPending,
     required this.payrollPaidThisMonth,
+    required this.attendanceTrend,
   });
 
   final int totalStaff;
@@ -276,4 +308,11 @@ class _HrmOverviewData {
   final int leaveRejectedMonth;
   final int payrollPending;
   final double payrollPaidThisMonth;
+  final List<_AttendanceTrendPoint> attendanceTrend;
+}
+
+class _AttendanceTrendPoint {
+  const _AttendanceTrendPoint({required this.month, required this.pctPresent});
+  final String month;
+  final double pctPresent;
 }

@@ -48,11 +48,13 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     final classRows = await client
         .schema('academic')
         .from('classes')
-        .select('id, name');
+        .select('id, name')
+        .eq('is_archived', false)
+        .order('name');
     final allClasses = List<Map<String, dynamic>>.from(classRows as List);
     final classNameById = {for (final c in allClasses) c['id'] as String: c['name'] as String};
 
-    // For teacher: find which classes they teach via timetable.
+    // For teacher: find which classes they teach via timetable or class_teacher_id.
     Set<String> taughtClassIds = {};
     if (selfStaffId != null) {
       final tts = await client
@@ -61,8 +63,17 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
           .select('class_id')
           .eq('teacher_id', selfStaffId);
       for (final t in tts as List) {
-        final cid = t['class_id'] as String;
-        if (cid.isNotEmpty) taughtClassIds.add(cid);
+        final cid = t['class_id'] as String?;
+        if (cid != null && cid.isNotEmpty) taughtClassIds.add(cid);
+      }
+      final ctClasses = await client
+          .schema('academic')
+          .from('classes')
+          .select('id')
+          .eq('class_teacher_id', selfStaffId);
+      for (final c in ctClasses as List) {
+        final cid = c['id'] as String?;
+        if (cid != null && cid.isNotEmpty) taughtClassIds.add(cid);
       }
     }
 
@@ -106,8 +117,12 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
   void _showPostSheet(List<Map<String, dynamic>> allClasses, Set<String> taughtClassIds) {
     final titleController = TextEditingController();
     final bodyController = TextEditingController();
-    // null = school-wide; a Map entry = selected class.
     Map<String, dynamic>? selectedClass;
+
+    // Filter available classes to taught classes if available, otherwise show all classes
+    final availableClasses = taughtClassIds.isNotEmpty
+        ? allClasses.where((c) => taughtClassIds.contains(c['id'])).toList()
+        : allClasses;
 
     showModalBottomSheet(
       context: context,
@@ -132,18 +147,17 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                 const SizedBox(height: 12),
                 TextField(controller: bodyController, decoration: const InputDecoration(labelText: 'Message'), maxLines: 4),
                 const SizedBox(height: 12),
-                // Class picker — only for teacher role; admin/principal stay school-wide.
-                if (taughtClassIds.isNotEmpty) ...[
-                  DropdownButtonFormField<Map<String, dynamic>?>(
-                    decoration: const InputDecoration(labelText: 'Target'),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('School-wide (all classes)')),
-                      for (final c in allClasses.where((c) => taughtClassIds.contains(c['id'])))
-                        DropdownMenuItem(value: c, child: Text(c['name'] as String)),
-                    ],
-                    onChanged: (v) => setModalState(() => selectedClass = v),
-                  ),
-                ],
+                // Target Class picker for Teachers / Staff
+                DropdownButtonFormField<Map<String, dynamic>?>(
+                  decoration: const InputDecoration(labelText: 'Target Audience'),
+                  value: selectedClass,
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('School-wide (all classes)')),
+                    for (final c in availableClasses)
+                      DropdownMenuItem(value: c, child: Text('${c['name']}${taughtClassIds.contains(c['id']) ? ' (My Class)' : ''}')),
+                  ],
+                  onChanged: (v) => setModalState(() => selectedClass = v),
+                ),
                 const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () {

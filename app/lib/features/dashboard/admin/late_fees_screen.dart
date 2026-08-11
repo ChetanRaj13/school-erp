@@ -151,7 +151,6 @@ class _LateFeesScreenState extends ConsumerState<LateFeesScreen> {
                         onSearch: (value) {
                           setState(() {
                             _searchQuery = value;
-                            _future = _load();
                           });
                         },
                         sorts: [
@@ -176,8 +175,18 @@ class _LateFeesScreenState extends ConsumerState<LateFeesScreen> {
                         child: Text('No late-fee rule set up yet — nothing will be flagged until one exists.'),
                       ),
                     )
-                  else
-                    SliverPadding(
+                  else () {
+                    List<Map<String, dynamic>> filteredOverdue = data.overdueInvoices;
+                    if (_searchQuery.isNotEmpty) {
+                      final query = _searchQuery.toLowerCase();
+                      filteredOverdue = filteredOverdue.where((inv) {
+                        final name = data.nameByStudentId[inv['student_id']]?.toLowerCase() ?? '';
+                        final dueDate = inv['due_date']?.toString().toLowerCase() ?? '';
+                        return name.contains(query) || dueDate.contains(query);
+                      }).toList();
+                    }
+
+                    return SliverPadding(
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
@@ -191,10 +200,10 @@ class _LateFeesScreenState extends ConsumerState<LateFeesScreen> {
                           const SizedBox(height: 20),
                           Text('Overdue (past grace period)', style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 12),
-                          if (data.overdueInvoices.isEmpty)
-                            const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Nothing overdue right now.'))
+                          if (filteredOverdue.isEmpty)
+                            const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('No matching overdue invoices.'))
                           else
-                            ...data.overdueInvoices.map((inv) {
+                            ...filteredOverdue.map((inv) {
                               final remaining = (inv['amount_due'] as num).toDouble() - (inv['amount_paid'] as num).toDouble();
                               final fee = _computeFee(data.rule!, remaining);
                               return Padding(
@@ -219,7 +228,8 @@ class _LateFeesScreenState extends ConsumerState<LateFeesScreen> {
                             }),
                         ]),
                       ),
-                    ),
+                    );
+                  }(),
                 ],
               );
             },

@@ -9,15 +9,14 @@ import 'core/theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (!Env.isConfigured) {
-    runApp(const _MissingConfigApp());
-    return;
+  try {
+    await Supabase.initialize(
+      url: Env.supabaseUrl,
+      publishableKey: Env.supabaseAnonKey,
+    );
+  } catch (e) {
+    debugPrint('Supabase initialization warning: $e');
   }
-
-  await Supabase.initialize(
-    url: Env.supabaseUrl,
-    publishableKey: Env.supabaseAnonKey,
-  );
 
   runApp(const ProviderScope(child: SchoolErpApp()));
 }

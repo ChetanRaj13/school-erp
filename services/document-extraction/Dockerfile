@@ -21,7 +21,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # OPENROUTER_API_KEY passed at `docker run` time via --env-file, never baked into the image.
-EXPOSE 8003
-# TODO verify the real port and update both EXPOSE and CMD below to match.
+EXPOSE 8005
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8005"]

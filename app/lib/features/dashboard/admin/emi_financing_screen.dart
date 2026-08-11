@@ -24,7 +24,6 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
   // Search and filter state
   String _searchQuery = '';
   SortOption? _sortOption;
-  String _planFilter = 'all';
 
   @override
   void initState() {
@@ -197,18 +196,23 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
   }
 
   // Filter and sort helpers
-  List<Map<String, dynamic>> _filterRequestedPlans(List<Map<String, dynamic>> plans) {
+  List<Map<String, dynamic>> _filterRequestedPlans(
+    List<Map<String, dynamic>> plans,
+    Map<String, String> invoiceStudentId,
+    Map<String, String> nameByStudentId,
+  ) {
     var filtered = plans;
 
     if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
       filtered = filtered.where((p) {
-        // In actual code, we'd need to resolve invoice and student data
-        return true;
+        final invoiceId = p['invoice_id'] as String? ?? '';
+        final studentId = invoiceStudentId[invoiceId];
+        final studentName = studentId != null ? (nameByStudentId[studentId] ?? '').toLowerCase() : '';
+        final planStatus = (p['status'] as String? ?? '').toLowerCase();
+        final amount = (p['installment_amount'] as num?)?.toString() ?? '';
+        return studentName.contains(query) || planStatus.contains(query) || amount.contains(query);
       }).toList();
-    }
-
-    if (_planFilter != 'all') {
-      // Plan type filtering would be implemented here
     }
 
     if (_sortOption != null) {
@@ -257,7 +261,6 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
                           setState(() {
                             _searchQuery = value;
                           });
-                          _refresh();
                         },
                         sorts: [
                           SortOptions.sortByDate,
@@ -292,7 +295,7 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          _filterRequestedPlans(data.requestedPlans).map((plan) {
+                          _filterRequestedPlans(data.requestedPlans, data.invoiceStudentId, data.nameByStudentId).map((plan) {
                             final invoiceId = plan['invoice_id'] as String;
                             final studentId = data.invoiceStudentId[invoiceId] as String?;
                             final studentName = studentId != null

@@ -2,11 +2,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 
-/// The core visual primitive of this design language: a frosted-glass panel — blurred
-/// backdrop + semi-transparent warm-white fill + soft border + soft shadow. Every card,
-/// nav bar, and input surface in the redesigned screens should use this rather than a
-/// plain Card, to keep the glass effect consistent everywhere instead of
-/// hand-implemented per screen.
+import 'package:flutter/foundation.dart';
+
+// The core visual primitive of this design language: a frosted-glass panel — blurred
+// backdrop + semi-transparent warm-white fill + soft border + soft shadow. Every card,
+// nav bar, and input surface in the redesigned screens should use this rather than a
+// plain Card, to keep the glass effect consistent everywhere instead of
+// hand-implemented per screen.
 class GlassCard extends StatelessWidget {
   const GlassCard({
     super.key,
@@ -26,22 +28,31 @@ class GlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = borderRadius ?? AppRadii.card;
+    final content = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: fillColor ?? AppColors.glassFill,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: AppColors.glassBorder, width: 1),
+        boxShadow: const [
+          BoxShadow(color: AppColors.glassShadow, blurRadius: 24, offset: Offset(0, 8)),
+        ],
+      ),
+      child: child,
+    );
+
+    if (kIsWeb) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: content,
+      );
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: fillColor ?? AppColors.glassFill,
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: AppColors.glassBorder, width: 1),
-            boxShadow: const [
-              BoxShadow(color: AppColors.glassShadow, blurRadius: 24, offset: Offset(0, 8)),
-            ],
-          ),
-          child: child,
-        ),
+        child: content,
       ),
     );
   }

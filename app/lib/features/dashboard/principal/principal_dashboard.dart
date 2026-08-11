@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/bar_chart.dart';
+import '../../../core/widgets/line_chart.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/progress_ring.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
@@ -97,6 +99,147 @@ class PrincipalDashboard extends ConsumerWidget {
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ),
+                        const SizedBox(height: 24),
+
+                        // ── Insights Section ──
+                        Text('Insights', style: Theme.of(context).textTheme.headlineSmall),
+                        const SizedBox(height: 12),
+
+                        // At-Risk Students summary
+                        if (s.atRiskStudents.isNotEmpty) ...[
+                          GlassCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 20),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '${s.atRiskStudents.where((r) => r.riskLevel == 'high').length} students flagged high-risk',
+                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${s.atRiskStudents.length} total at-risk students (attendance < 85% or marks below threshold)',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                                ),
+                                const SizedBox(height: 8),
+                                ...s.atRiskStudents.take(5).map((r) => Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 3),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(r.fullName, style: Theme.of(context).textTheme.bodyMedium),
+                                          ),
+                                          _RiskBadge(level: r.riskLevel),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${r.attendancePct.toStringAsFixed(0)}% att / ${r.avgMarks.toStringAsFixed(0)} avg',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+                                          ),
+                                        ],
+                                      ),
+                                    )),
+                                if (s.atRiskStudents.length > 5)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      '+${s.atRiskStudents.length - 5} more — see full list in Analytics',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Attendance-Grade Correlation
+                        if (s.corrChronicAvg != null && s.corrNonChronicAvg != null)
+                          GlassCard(
+                            child: Row(
+                              children: [
+                                Icon(Icons.insights_outlined, color: AppColors.primary, size: 22),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Attendance ↔ Performance', style: Theme.of(context).textTheme.titleMedium),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Students with attendance below 85% average '
+                                        '${s.corrChronicAvg!.toStringAsFixed(0)} marks, vs '
+                                        '${s.corrNonChronicAvg!.toStringAsFixed(0)} for others.',
+                                        style: Theme.of(context).textTheme.bodyMedium,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        const SizedBox(height: 12),
+
+                        // Grade Trend chart
+                        if (s.gradeTrendValues.isNotEmpty)
+                          SizedBox(
+                            height: 200,
+                            child: LineChart(
+                              values: s.gradeTrendValues,
+                              labels: s.gradeTrendLabels,
+                              title: 'School-Wide Grade Trend',
+                              chartColor: AppColors.primary,
+                            ),
+                          ),
+
+                        const SizedBox(height: 12),
+
+                        // Admission Trend chart
+                        if (s.admissionTrend.isNotEmpty)
+                          SizedBox(
+                            height: 200,
+                            child: BarChart(
+                              data: {for (final a in s.admissionTrend) '${a.year}': a.admissions.toDouble()},
+                              title: 'Admissions by Year',
+                              showValues: true,
+                            ),
+                          ),
+
+                        const SizedBox(height: 12),
+
+                        // Cohort Comparison
+                        if (s.cohortComparison.isNotEmpty) ...[
+                          GlassCard(
+                            padding: const EdgeInsets.all(0),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: DataTable(
+                                columnSpacing: 16,
+                                headingRowColor: WidgetStateProperty.all(AppColors.glassBorder),
+                                columns: const [
+                                  DataColumn(label: Text('Year')),
+                                  DataColumn(label: Text('Section')),
+                                  DataColumn(label: Text('Avg Marks'), numeric: true),
+                                ],
+                                rows: s.cohortComparison.map((c) => DataRow(
+                                  cells: [
+                                    DataCell(Text(c.academicYear)),
+                                    DataCell(Text(c.section)),
+                                    DataCell(Text(c.avgMarks.toStringAsFixed(1))),
+                                  ],
+                                )).toList(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
                       ]),
                     ),
                   ),
@@ -119,17 +262,162 @@ class PrincipalDashboard extends ConsumerWidget {
       due += (row['amount_due'] as num).toDouble();
       paid += (row['amount_paid'] as num).toDouble();
     }
-    return _PrincipalSummary(studentCount: students.length, staffCount: staff.length, amountDue: due, amountPaid: paid, timetableCount: timetable.length);
+
+    // ── Grade trend (school-wide) ──
+    List<double> gradeTrendValues = [];
+    List<String> gradeTrendLabels = [];
+    try {
+      final res = await client.schema('analytics').rpc('get_grade_trend');
+      final list = List<Map<String, dynamic>>.from(res as List);
+      for (final r in list) {
+        gradeTrendValues.add((r['avg_marks'] as num?)?.toDouble() ?? 0);
+        final year = (r['academic_year'] as String?) ?? '';
+        final term = (r['term'] as String?) ?? '';
+        gradeTrendLabels.add('$year $term'.trim());
+      }
+    } catch (_) {}
+
+    // ── At-risk students (school-wide) ──
+    List<_AtRiskStudent> atRiskStudents = [];
+    try {
+      final res = await client.schema('analytics').rpc('get_at_risk_students');
+      final list = List<Map<String, dynamic>>.from(res as List);
+      atRiskStudents = list.map((r) => _AtRiskStudent(
+        studentId: (r['student_id'] as String?) ?? '',
+        fullName: (r['full_name'] as String?) ?? 'Unknown',
+        attendancePct: (r['attendance_pct'] as num?)?.toDouble() ?? 0,
+        avgMarks: (r['avg_marks'] as num?)?.toDouble() ?? 0,
+        riskLevel: (r['risk_level'] as String?) ?? 'low',
+      )).toList();
+    } catch (_) {}
+
+    // ── Attendance-grade correlation (school-wide) ──
+    double? corrChronicAvg;
+    double? corrNonChronicAvg;
+    try {
+      final res = await client.schema('analytics').rpc('get_attendance_grade_correlation');
+      final list = List<Map<String, dynamic>>.from(res as List);
+      for (final r in list) {
+        final isChronic = r['is_chronic'] as bool? ?? false;
+        final avgMarks = (r['avg_marks'] as num?)?.toDouble();
+        if (isChronic) {
+          corrChronicAvg = avgMarks;
+        } else {
+          corrNonChronicAvg = avgMarks;
+        }
+      }
+    } catch (_) {}
+
+    // ── Cohort comparison (school-wide) ──
+    List<_CohortRow> cohortComparison = [];
+    try {
+      final res = await client.schema('analytics').rpc('get_cohort_comparison');
+      final list = List<Map<String, dynamic>>.from(res as List);
+      cohortComparison = list.map((r) => _CohortRow(
+        academicYear: (r['academic_year'] as String?) ?? '',
+        section: (r['section'] as String?) ?? '',
+        avgMarks: (r['avg_marks'] as num?)?.toDouble() ?? 0,
+      )).toList();
+    } catch (_) {}
+
+    // ── Admission trend (school-wide) ──
+    List<_AdmissionTrendPoint> admissionTrend = [];
+    try {
+      final res = await client.schema('analytics').rpc('get_admission_trend');
+      final list = List<Map<String, dynamic>>.from(res as List);
+      admissionTrend = list.map((r) => _AdmissionTrendPoint(
+        year: (r['year'] as num?)?.toInt() ?? 0,
+        admissions: (r['admissions'] as num?)?.toInt() ?? 0,
+      )).toList();
+    } catch (_) {}
+
+    return _PrincipalSummary(
+      studentCount: students.length,
+      staffCount: staff.length,
+      amountDue: due,
+      amountPaid: paid,
+      timetableCount: timetable.length,
+      gradeTrendValues: gradeTrendValues,
+      gradeTrendLabels: gradeTrendLabels,
+      atRiskStudents: atRiskStudents,
+      corrChronicAvg: corrChronicAvg,
+      corrNonChronicAvg: corrNonChronicAvg,
+      cohortComparison: cohortComparison,
+      admissionTrend: admissionTrend,
+    );
   }
 }
 
 class _PrincipalSummary {
-  _PrincipalSummary({required this.studentCount, required this.staffCount, required this.amountDue, required this.amountPaid, required this.timetableCount});
+  _PrincipalSummary({
+    required this.studentCount,
+    required this.staffCount,
+    required this.amountDue,
+    required this.amountPaid,
+    required this.timetableCount,
+    required this.gradeTrendValues,
+    required this.gradeTrendLabels,
+    required this.atRiskStudents,
+    this.corrChronicAvg,
+    this.corrNonChronicAvg,
+    required this.cohortComparison,
+    required this.admissionTrend,
+  });
   final int studentCount;
   final int staffCount;
   final double amountDue;
   final double amountPaid;
   final int timetableCount;
+  final List<double> gradeTrendValues;
+  final List<String> gradeTrendLabels;
+  final List<_AtRiskStudent> atRiskStudents;
+  final double? corrChronicAvg;
+  final double? corrNonChronicAvg;
+  final List<_CohortRow> cohortComparison;
+  final List<_AdmissionTrendPoint> admissionTrend;
+}
+
+class _AtRiskStudent {
+  const _AtRiskStudent({required this.studentId, required this.fullName, required this.attendancePct, required this.avgMarks, required this.riskLevel});
+  final String studentId;
+  final String fullName;
+  final double attendancePct;
+  final double avgMarks;
+  final String riskLevel;
+}
+
+class _CohortRow {
+  const _CohortRow({required this.academicYear, required this.section, required this.avgMarks});
+  final String academicYear;
+  final String section;
+  final double avgMarks;
+}
+
+class _AdmissionTrendPoint {
+  const _AdmissionTrendPoint({required this.year, required this.admissions});
+  final int year;
+  final int admissions;
+}
+
+class _RiskBadge extends StatelessWidget {
+  const _RiskBadge({required this.level});
+  final String level;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = level == 'high' ? AppColors.error : level == 'medium' ? AppColors.warning : AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        level[0].toUpperCase() + level.substring(1),
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+      ),
+    );
+  }
 }
 
 class _StatGlassCard extends StatelessWidget {

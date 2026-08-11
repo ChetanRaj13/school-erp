@@ -22,6 +22,7 @@ dependencies:
   intl: ^0.18.1
   collection: ^1.18.0              # For firstWhereOrNull and other collection utilities
   google_fonts: ^6.2.1              # Instrument Serif + Inter for the cinematic hero header
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:

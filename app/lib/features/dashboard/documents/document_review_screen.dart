@@ -2,11 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
-import '../../../core/config/api_endpoints.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
@@ -17,13 +15,14 @@ import '../../../shared/widgets/warm_backdrop.dart';
 /// Vision-LLM-extracted fields from extracted_json, with any field named in
 /// uncertain_fields flagged amber (human-in-the-loop: the LLM itself signalled low
 /// confidence on those). The admin can edit the prefilled values and Approve & Commit,
-/// which calls the real `POST /documents/commit` (port 8003, service-role, bypasses RLS) —
-/// that endpoint persists the confirmed fields to public.students, links the student_id
-/// back onto the form, and marks it status='verified'. Nothing here auto-commits.
+/// which calls the Supabase Edge Function `document-commit` — that endpoint persists
+/// the confirmed fields to public.students, links the student_id back onto the form,
+/// and marks it status='verified'. Nothing here auto-commits.
 ///
-/// Commit request shape confirmed against services/document-extraction/main.py:
-///   {form_id, full_name?, admission_number?, guardian_contact?, student_id?}
-///   response: {status:"committed", student_id, form_id, reviewed_at}
+/// Both document-extraction-trigger and document-commit are Supabase Edge Functions —
+/// invoked via `client.functions.invoke()`, so auth is handled automatically by the SDK.
+/// Commit request shape: {form_id, full_name?, admission_number?, guardian_contact?, student_id?}
+/// response: {status:"committed", student_id, form_id, reviewed_at}
 class DocumentReviewScreen extends ConsumerStatefulWidget {
   const DocumentReviewScreen({super.key});
 
@@ -33,16 +32,18 @@ class DocumentReviewScreen extends ConsumerStatefulWidget {
 
 class _DocumentReviewScreenState extends ConsumerState<DocumentReviewScreen> {
   late Future<List<_PendingForm>> _future;
+  late final SupabaseClient _client;
 
   @override
   void initState() {
     super.initState();
-    _future = _loadPending(ref.read(supabaseClientProvider));
+    _client = ref.read(supabaseClientProvider);
+    _future = _loadPending(_client);
   }
 
   void _refresh() {
     setState(() {
-      _future = _loadPending(ref.read(supabaseClientProvider));
+      _future = _loadPending(_client);
     });
   }
 
@@ -115,7 +116,7 @@ class _DocumentReviewScreenState extends ConsumerState<DocumentReviewScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  ...forms.map((f) => _FormCard(form: f, onCommitted: _refresh)),
+                  ...forms.map((f) => _FormCard(form: f, client: _client, onCommitted: _refresh)),
                 ],
               );
             },
@@ -127,8 +128,13 @@ class _DocumentReviewScreenState extends ConsumerState<DocumentReviewScreen> {
 }
 
 class _FormCard extends StatefulWidget {
-  const _FormCard({required this.form, required this.onCommitted});
+  const _FormCard({
+    required this.form,
+    required this.client,
+    required this.onCommitted,
+  });
   final _PendingForm form;
+  final SupabaseClient client;
   final VoidCallback onCommitted;
 
   @override
@@ -181,32 +187,29 @@ class _FormCardState extends State<_FormCard> {
       _success = null;
     });
     try {
-      final response = await http
-          .post(
-            Uri.parse(ApiEndpoints.docCommit),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'form_id': widget.form.id,
-              'full_name': _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim(),
-              'admission_number': _admissionCtrl.text.trim().isEmpty
-                  ? null
-                  : _admissionCtrl.text.trim(),
-              'guardian_contact': _guardianCtrl.text.trim().isEmpty
-                  ? null
-                  : _guardianCtrl.text.trim(),
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+      final response = await widget.client.functions.invoke(
+        'document-commit',
+        body: {
+          'form_id': widget.form.id,
+          'full_name': _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim(),
+          'admission_number': _admissionCtrl.text.trim().isEmpty
+              ? null
+              : _admissionCtrl.text.trim(),
+          'guardian_contact': _guardianCtrl.text.trim().isEmpty
+              ? null
+              : _guardianCtrl.text.trim(),
+        },
+      );
 
-      if (response.statusCode != 200) {
+      if (response.status != 200) {
         setState(() {
-          _error = 'Commit failed (HTTP ${response.statusCode}): '
-              '${response.body}';
+          _error = 'Commit failed (HTTP ${response.status}): '
+              '${response.error ?? response.data}';
           _committing = false;
         });
         return;
       }
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = jsonDecode(response.data) as Map<String, dynamic>;
       setState(() {
         _success = 'Committed. student_id: ${json['student_id']}';
         _committing = false;
@@ -217,8 +220,7 @@ class _FormCardState extends State<_FormCard> {
     } catch (e) {
       setState(() {
         _error = 'Commit request failed: $e\n\n'
-            'Is the document-extraction service running on port ${ApiEndpoints.docPort}? '
-            '(uvicorn main:app --port ${ApiEndpoints.docPort})';
+            'Ensure the document-commit Edge Function is deployed.';
         _committing = false;
       });
     }

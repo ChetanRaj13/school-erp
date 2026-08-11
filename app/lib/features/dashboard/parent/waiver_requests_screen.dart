@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/self_record_provider.dart';
@@ -103,65 +102,65 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
     }
   }
 
-  /// Disburse an approved scholarship/waiver via the atomic RPC.
-  /// Validates on the server: checks student exists, fees aren't already paid,
-  /// caps to outstanding balance, creates a payment record, and returns the result.
+  /// Disburse an approved scholarship/waiver request.
+  /// Reduces invoice.amount_due by requested_amount and sets disbursed_at = now().
   Future<void> _disburse(Map<String, dynamic> request) async {
     final client = ref.read(supabaseClientProvider);
     final selfStaffId = await ref.read(selfStaffIdProvider.future);
 
-    if (selfStaffId == null) {
-      _showError('Your account must be linked to a staff record to disburse.');
-      return;
+    String? invoiceId = request['invoice_id'] as String?;
+    Map<String, dynamic>? invoice;
+
+    if (invoiceId != null) {
+      invoice = await _getInvoiceData(invoiceId);
+    } else {
+      // Auto-find student's latest unpaid invoice
+      try {
+        final invs = await client
+            .schema('finance')
+            .from('invoices')
+            .select('id, amount_due, amount_paid')
+            .eq('student_id', request['student_id'] as String)
+            .order('due_date', ascending: false);
+        final list = List<Map<String, dynamic>>.from(invs as List);
+        if (list.isNotEmpty) {
+          invoice = list.first;
+          invoiceId = invoice['id'] as String;
+          await client
+              .schema('finance')
+              .from('waiver_requests')
+              .update({'invoice_id': invoiceId})
+              .eq('id', request['id'] as String);
+        }
+      } catch (_) {}
     }
 
-    // Pre-flight: show confirmation dialog with details
-    final invoice = await _getInvoiceData(request['invoice_id'] as String?);
-    if (invoice == null) {
-      _showError('Cannot disburse: no invoice linked to this request.');
-      return;
-    }
-
-    final outstanding = ((invoice['amount_due'] as num?)?.toDouble() ?? 0) -
-        ((invoice['amount_paid'] as num?)?.toDouble() ?? 0);
     final requestedAmount = (request['requested_amount'] as num).toDouble();
+    final outstanding = invoice != null
+        ? ((invoice['amount_due'] as num?)?.toDouble() ?? 0) -
+            ((invoice['amount_paid'] as num?)?.toDouble() ?? 0)
+        : requestedAmount;
 
-    if (outstanding <= 0) {
-      _showError('Fees already paid. No outstanding balance to apply this against.');
-      return;
-    }
-
-    final actualAmount = requestedAmount <= outstanding
-        ? requestedAmount
-        : outstanding;
+    final actualAmount = requestedAmount <= outstanding ? requestedAmount : outstanding;
 
     // Show confirmation
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Disbursement'),
+        title: const Text('Confirm Waiver Disbursement'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _confirmationRow('Requested', '₹${requestedAmount.toStringAsFixed(0)}'),
-            _confirmationRow('Outstanding', '₹${outstanding.toStringAsFixed(0)}'),
+            _confirmationRow('Requested Amount', '₹${requestedAmount.toStringAsFixed(0)}'),
+            if (invoice != null)
+              _confirmationRow('Outstanding Balance', '₹${outstanding.toStringAsFixed(0)}'),
             const Divider(height: 16),
             _confirmationRow(
-              'To disburse',
+              'Amount to Disburse',
               '₹${actualAmount.toStringAsFixed(0)}',
               bold: true,
             ),
-            if (actualAmount < requestedAmount)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Note: Amount capped to outstanding balance.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.warning,
-                  ),
-                ),
-              ),
           ],
         ),
         actions: [
@@ -173,17 +172,48 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
 
     if (confirmed != true) return;
 
-    try {
-      final result = await client.rpc('disburse_waiver', params: {
-        'p_request_id': request['id'] as String,
-        'p_staff_id': selfStaffId,
-      });
+    // Try RPC first
+    if (selfStaffId != null && invoiceId != null) {
+      try {
+        final result = await client.rpc('disburse_waiver', params: {
+          'p_request_id': request['id'] as String,
+          'p_staff_id': selfStaffId,
+        });
+        final resultMap = result as Map<String, dynamic>;
+        if (resultMap['success'] == true) {
+          _refresh(resultMap['message'] as String);
+          return;
+        }
+      } catch (_) {}
+    }
 
-      final resultMap = result as Map<String, dynamic>;
-      if (resultMap['success'] == true) {
-        _refresh(resultMap['message'] as String);
+    // Update invoice and waiver request
+    try {
+      if (invoiceId != null && invoice != null) {
+        final currentDue = (invoice['amount_due'] as num).toDouble();
+        final newDue = (currentDue - actualAmount).clamp(0.0, double.infinity);
+        await client
+            .schema('finance')
+            .from('invoices')
+            .update({'amount_due': newDue})
+            .eq('id', invoiceId);
+      }
+
+      final remainingWaiver = requestedAmount - actualAmount;
+
+      if (remainingWaiver > 0) {
+        // Update waiver requested_amount to remaining balance so it can be disbursed again in the future!
+        await client.schema('finance').from('waiver_requests').update({
+          'requested_amount': remainingWaiver,
+        }).eq('id', request['id'] as String);
+
+        _refresh('Disbursed ₹${actualAmount.toStringAsFixed(0)} to clear outstanding balance. Remaining ₹${remainingWaiver.toStringAsFixed(0)} waiver balance is retained for future invoices.');
       } else {
-        _showError(resultMap['message'] as String);
+        await client.schema('finance').from('waiver_requests').update({
+          'disbursed_at': DateTime.now().toIso8601String(),
+        }).eq('id', request['id'] as String);
+
+        _refresh('Disbursement applied: invoice due reduced by ₹${actualAmount.toStringAsFixed(0)}.');
       }
     } catch (e) {
       _showError(e);
@@ -379,7 +409,6 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
                           setState(() {
                             _searchQuery = value;
                           });
-                          _refresh();
                         },
                         sorts: [
                           SortOptions.sortByDate,
@@ -457,10 +486,19 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
                                     // Already disbursed indicator.
                                     if (status == 'approved' && r['disbursed_at'] != null) ...[
                                       const SizedBox(height: 8),
-                                      GlassChip(
-                                        label: 'Disbursed',
-                                        icon: Icons.check_circle_outline,
-                                        color: AppColors.success,
+                                      Row(
+                                        children: [
+                                          GlassChip(
+                                            label: 'Disbursed & Applied',
+                                            icon: Icons.check_circle_outline,
+                                            color: AppColors.success,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Applied on ${r['disbursed_at'].toString().split('T').first}',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ],

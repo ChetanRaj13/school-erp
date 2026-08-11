@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart';
 import 'liquid_glass_container.dart';
 
 /// Cinematic hero header: a static background image with a slow Ken-Burns
@@ -139,15 +140,17 @@ class _CinematicHeroHeaderState extends State<CinematicHeroHeader>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Background image with a slow, subtle Ken Burns scale drift.
-          AnimatedBuilder(
-            animation: _kenBurnsController,
-            builder: (context, child) {
-              final scale = 1.0 + (0.04 * _kenBurnsController.value);
-              return Transform.scale(scale: scale, child: child);
-            },
-            child: Image.asset(widget.backgroundAsset, fit: BoxFit.cover),
-          ),
+          // Background image with a slow, subtle Ken Burns scale drift (disabled on web to improve rendering performance).
+          kIsWeb
+              ? Image.asset(widget.backgroundAsset, fit: BoxFit.cover)
+              : AnimatedBuilder(
+                  animation: _kenBurnsController,
+                  builder: (context, child) {
+                    final scale = 1.0 + (0.04 * _kenBurnsController.value);
+                    return Transform.scale(scale: scale, child: child);
+                  },
+                  child: Image.asset(widget.backgroundAsset, fit: BoxFit.cover),
+                ),
           // Slight darken so white text stays legible over bright image areas.
           Container(color: Colors.black.withValues(alpha: 0.18)),
           // Foreground content.

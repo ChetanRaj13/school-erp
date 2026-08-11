@@ -45,7 +45,12 @@ class _TeacherAssignmentsScreenState extends ConsumerState<TeacherAssignmentsScr
       submissionCounts[a['id'] as String] = (subs as List).length;
     }
 
-    final classes = await client.schema('academic').from('classes').select('id, name');
+    final classes = await client
+        .schema('academic')
+        .from('classes')
+        .select('id, name')
+        .eq('is_archived', false)
+        .order('name');
     final subjectsRaw = await client.schema('academic').from('subjects').select('id, name');
 
     // Deduplicate subjects by name — the subjects table has one row per

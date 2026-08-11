@@ -80,41 +80,54 @@ class _LineChartPainter extends CustomPainter {
 
     // Draw line path
     if (values.length > 1) {
-      final path = Path();
+      final linePath = Path();
       final xStep = usableWidth / (values.length - 1);
+      final yPaddingTop = 15.0;
+      final yPaddingBottom = 25.0;
+      final usableH = size.height - yPaddingTop - yPaddingBottom;
 
+      final points = <Offset>[];
       for (int i = 0; i < values.length; i++) {
         final x = padding.left + i * xStep;
-        final normalizedY = values[i] / effectiveMax;
-        final yPaddingTop = 10;
-        final yPaddingBottom = 10;
-        final usableH = size.height - yPaddingTop * 2;
-        final y = size.height - yPaddingBottom - normalizedY * usableH;
+        final normalizedY = (values[i] / effectiveMax).clamp(0.0, 1.0);
+        final y = size.height - yPaddingBottom - (normalizedY * usableH);
+        points.add(Offset(x, y));
 
         if (i == 0) {
-          path.moveTo(x, y);
+          linePath.moveTo(x, y);
         } else {
-          path.lineTo(x, y);
+          linePath.lineTo(x, y);
         }
-
-        // Draw point
-        final pointPaint = Paint()..color = chartColor..strokeWidth = 3;
-        canvas.drawCircle(Offset(x, y), 4, pointPaint);
       }
 
-      // Fill area under line
-      path.lineTo(size.width - padding.bottom, size.height - padding.bottom);
-      path.lineTo(padding.left, size.height - padding.bottom);
-      path.close();
+      // 1. Fill area under line using a copy of the path
+      final fillPath = Path.from(linePath);
+      fillPath.lineTo(points.last.dx, size.height - yPaddingBottom);
+      fillPath.lineTo(points.first.dx, size.height - yPaddingBottom);
+      fillPath.close();
 
       final areaPaint = Paint()
         ..style = PaintingStyle.fill
         ..color = chartColor.withOpacity(0.15);
-      canvas.drawPath(path, areaPaint);
+      canvas.drawPath(fillPath, areaPaint);
 
-      // Redraw main line on top
-      final linePaint = Paint()..color = chartColor..style = PaintingStyle.stroke..strokeWidth = 2;
-      canvas.drawPath(path, linePaint);
+      // 2. Draw line stroke ON TOP (ONLY linePath, not closed fillPath!)
+      final linePaint = Paint()
+        ..color = chartColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      canvas.drawPath(linePath, linePaint);
+
+      // 3. Draw points and value badges on top
+      for (int i = 0; i < points.length; i++) {
+        final pt = points[i];
+        final pointPaint = Paint()..color = chartColor;
+        final whitePaint = Paint()..color = Colors.white;
+        canvas.drawCircle(pt, 5, pointPaint);
+        canvas.drawCircle(pt, 2.5, whitePaint);
+      }
     }
 
     // Draw labels at bottom

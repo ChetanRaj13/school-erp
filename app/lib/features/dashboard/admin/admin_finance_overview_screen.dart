@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/bar_chart.dart';
+import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/stat_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
@@ -204,6 +206,123 @@ class AdminFinanceOverviewScreen extends ConsumerWidget {
                   ),
 
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+                  // ── Revenue Trend (historical years) ──
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    sliver: SliverToBoxAdapter(
+                      child: Text('Revenue by Academic Year', style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                  ),
+                  if (data.revenueTrend.isEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      sliver: SliverToBoxAdapter(
+                        child: GlassCard(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              'No historical revenue data available.',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      sliver: SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 200,
+                          child: BarChart(
+                            data: {
+                              for (final r in data.revenueTrend) r.academicYear: r.totalCollected,
+                            },
+                            title: 'Total Collected',
+                            showValues: true,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+                  // ── Budget Variance ──
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    sliver: SliverToBoxAdapter(
+                      child: Text('Budget Variance by Category', style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                  ),
+                  if (data.budgetVariance.isEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      sliver: SliverToBoxAdapter(
+                        child: GlassCard(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              'No budget variance data available.',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      sliver: SliverToBoxAdapter(
+                        child: GlassCard(
+                          padding: const EdgeInsets.all(0),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: DataTable(
+                              columnSpacing: 16,
+                              headingRowColor: WidgetStateProperty.all(AppColors.glassBorder),
+                              columns: const [
+                                DataColumn(label: Text('Category')),
+                                DataColumn(label: Text('Year'), numeric: true),
+                                DataColumn(label: Text('Planned'), numeric: true),
+                                DataColumn(label: Text('Actual'), numeric: true),
+                                DataColumn(label: Text('% Used'), numeric: true),
+                              ],
+                              rows: data.budgetVariance.map((bv) {
+                                final overBudget = bv.pctOfBudget > 110;
+                                return DataRow(
+                                  cells: [
+                                    DataCell(Text(bv.category)),
+                                    DataCell(Text(bv.academicYear)),
+                                    DataCell(Text('₹${bv.plannedAmount.toStringAsFixed(0)}')),
+                                    DataCell(Text('₹${bv.actualSpend.toStringAsFixed(0)}')),
+                                    DataCell(
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (overBudget)
+                                            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 16),
+                                          if (overBudget) const SizedBox(width: 4),
+                                          Text(
+                                            '${bv.pctOfBudget.toStringAsFixed(0)}%',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: overBudget ? AppColors.error : AppColors.textPrimary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 ],
               );
             },
@@ -315,6 +434,36 @@ class AdminFinanceOverviewScreen extends ConsumerWidget {
     final waiverList = List<Map<String, dynamic>>.from(waiverRows as List);
     final waiversPending = waiverList.where((w) => w['status'] == 'pending').length;
 
+    // ── Revenue trend (school-wide, historical years) ──
+    List<_RevenueTrendPoint> revenueTrend = [];
+    try {
+      final trendRes = await client.schema('analytics').rpc('get_revenue_trend');
+      final trendList = List<Map<String, dynamic>>.from(trendRes as List);
+      revenueTrend = trendList.map((r) => _RevenueTrendPoint(
+        academicYear: (r['academic_year'] as String?) ?? '',
+        totalCollected: (r['total_collected'] as num?)?.toDouble() ?? 0,
+        pctLate: (r['pct_late'] as num?)?.toDouble() ?? 0,
+      )).toList();
+    } catch (_) {
+      // RPC may not exist or user lacks permission
+    }
+
+    // ── Budget variance (school-wide) ──
+    List<_BudgetVarianceRow> budgetVariance = [];
+    try {
+      final varRes = await client.schema('analytics').rpc('get_budget_variance');
+      final varList = List<Map<String, dynamic>>.from(varRes as List);
+      budgetVariance = varList.map((r) => _BudgetVarianceRow(
+        category: (r['category'] as String?) ?? '',
+        academicYear: (r['academic_year'] as String?) ?? '',
+        plannedAmount: (r['planned_amount'] as num?)?.toDouble() ?? 0,
+        actualSpend: (r['actual_spend'] as num?)?.toDouble() ?? 0,
+        pctOfBudget: (r['pct_of_budget'] as num?)?.toDouble() ?? 0,
+      )).toList();
+    } catch (_) {
+      // RPC may not exist or user lacks permission
+    }
+
     return _FinanceOverviewData(
       feeCollected: feeCollected,
       feePending: feePending,
@@ -328,6 +477,8 @@ class AdminFinanceOverviewScreen extends ConsumerWidget {
       poRejected: poRejected,
       emiActive: emiActive,
       waiversPending: waiversPending,
+      revenueTrend: revenueTrend,
+      budgetVariance: budgetVariance,
     );
   }
 }
@@ -346,6 +497,8 @@ class _FinanceOverviewData {
     required this.poRejected,
     required this.emiActive,
     required this.waiversPending,
+    required this.revenueTrend,
+    required this.budgetVariance,
   });
 
   final double feeCollected;
@@ -360,4 +513,22 @@ class _FinanceOverviewData {
   final int poRejected;
   final int emiActive;
   final int waiversPending;
+  final List<_RevenueTrendPoint> revenueTrend;
+  final List<_BudgetVarianceRow> budgetVariance;
+}
+
+class _RevenueTrendPoint {
+  const _RevenueTrendPoint({required this.academicYear, required this.totalCollected, required this.pctLate});
+  final String academicYear;
+  final double totalCollected;
+  final double pctLate;
+}
+
+class _BudgetVarianceRow {
+  const _BudgetVarianceRow({required this.category, required this.academicYear, required this.plannedAmount, required this.actualSpend, required this.pctOfBudget});
+  final String category;
+  final String academicYear;
+  final double plannedAmount;
+  final double actualSpend;
+  final double pctOfBudget;
 }

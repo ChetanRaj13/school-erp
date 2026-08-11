@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/self_record_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/line_chart.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
@@ -49,7 +50,13 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
     final subjectIds = timetableRows.map((r) => r['subject_id'] as String).toSet().toList();
     if (classIds.isEmpty) return _GradebookData(selfStaffId: selfStaffId, classes: [], subjects: []);
 
-    final classes = await client.schema('academic').from('classes').select('id, name').inFilter('id', classIds);
+    final classes = await client
+        .schema('academic')
+        .from('classes')
+        .select('id, name')
+        .inFilter('id', classIds)
+        .eq('is_archived', false)
+        .order('name');
     final subjectsRaw = subjectIds.isEmpty
         ? []
         : await client.schema('academic').from('subjects').select('id, name').inFilter('id', subjectIds);
@@ -58,11 +65,32 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
     // (subject, qualified-teacher) pair, so the same subject name appears
     // multiple times. Keep only the first row per name for the dropdown.
     final seenNames = <String>{};
-    final subjects = (subjectsRaw as List).where((s) => seenNames.add(s['name'] as String)).toList();
+    final subjects = subjectsRaw.where((s) => seenNames.add(s['name'] as String)).toList();
+    final classList = List<Map<String, dynamic>>.from(classes as List);
+
+    // Rank classes by historical attendance/grade count so default selection has the most data (7-A/6-A)
+    try {
+      final counts = <String, int>{};
+      await Future.wait(classIds.map((cid) async {
+        final res = await client
+            .schema('attendance')
+            .from('records')
+            .select('id')
+            .eq('class_id', cid)
+            .count(CountOption.exact);
+        counts[cid] = res.count;
+      }));
+      classList.sort((a, b) {
+        final countA = counts[a['id']] ?? 0;
+        final countB = counts[b['id']] ?? 0;
+        if (countB != countA) return countB.compareTo(countA);
+        return (a['name'] as String).compareTo(b['name'] as String);
+      });
+    } catch (_) {}
 
     return _GradebookData(
       selfStaffId: selfStaffId,
-      classes: List<Map<String, dynamic>>.from(classes as List),
+      classes: classList,
       subjects: List<Map<String, dynamic>>.from(subjects),
     );
   }
@@ -160,6 +188,55 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
     );
   }
 
+  Future<List<Map<String, dynamic>>> _loadGradeTrend(String classId) async {
+    final client = ref.read(supabaseClientProvider);
+    try {
+      final res = await client.schema('analytics').rpc('get_grade_trend', params: {'p_class_id': classId});
+      final list = List<Map<String, dynamic>>.from(res as List);
+      if (list.length >= 2) return list;
+    } catch (_) {
+      try {
+        final res = await client.rpc('get_grade_trend', params: {'p_class_id': classId});
+        final list = List<Map<String, dynamic>>.from(res as List);
+        if (list.length >= 2) return list;
+      } catch (_) {}
+    }
+
+    // Try computing directly from academic.grades for students in this class
+    try {
+      final roster = await client.schema('academic').from('class_roster').select('student_id').eq('class_id', classId);
+      final studentIds = (roster as List).map((r) => r['student_id'] as String).toList();
+      if (studentIds.isNotEmpty) {
+        final gradesRaw = await client
+            .schema('academic')
+            .from('grades')
+            .select('term, marks_obtained, max_marks')
+            .inFilter('student_id', studentIds);
+        final grades = List<Map<String, dynamic>>.from(gradesRaw as List);
+        if (grades.isNotEmpty) {
+          final byTerm = <String, List<double>>{};
+          for (final g in grades) {
+            final termStr = g['term'] as String? ?? 'General';
+            final marks = (g['marks_obtained'] as num?)?.toDouble() ?? 0.0;
+            final maxM = (g['max_marks'] as num?)?.toDouble() ?? 100.0;
+            final pct = maxM > 0 ? (marks / maxM) * 100 : 0.0;
+            byTerm.putIfAbsent(termStr, () => []).add(pct);
+          }
+          if (byTerm.length >= 2) {
+            final sortedTerms = byTerm.keys.toList()..sort();
+            return sortedTerms.map((t) {
+              final pctList = byTerm[t]!;
+              final avg = pctList.reduce((a, b) => a + b) / pctList.length;
+              return {'term': t, 'avg_marks': double.parse(avg.toStringAsFixed(1))};
+            }).toList();
+          }
+        }
+      }
+    } catch (_) {}
+
+    return [];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -222,6 +299,44 @@ class _GradebookScreenState extends ConsumerState<GradebookScreen> {
                       controller: _termController,
                       decoration: const InputDecoration(labelText: 'Term / Exam name'),
                       onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    child: FutureBuilder<List<Map<String, dynamic>>>(
+                      key: ValueKey('grade-trend-$_selectedClassId'),
+                      future: _loadGradeTrend(_selectedClassId!),
+                      builder: (context, snapshot) {
+                        final trend = snapshot.data ?? [];
+                        if (trend.length < 2) {
+                          return GlassCard(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.show_chart_outlined, color: AppColors.textSecondary, size: 20),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Not enough historical data yet for this class',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        final labels = trend.map((t) => (t['term']?.toString() ?? t['academic_year']?.toString() ?? '')).toList();
+                        final values = trend.map((t) => (t['avg_marks'] as num?)?.toDouble() ?? 0.0).toList();
+                        return SizedBox(
+                          height: 160,
+                          child: LineChart(
+                            title: 'Grade Trend (Class Avg Marks)',
+                            labels: labels,
+                            values: values,
+                            maxValue: 100.0,
+                            chartColor: AppColors.primary,
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Expanded(

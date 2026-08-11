@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/self_children_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/progress_ring.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import 'providers/parent_providers.dart';
 
 /// Parent Overview — a real performance summary (attendance %, recent grades,
 /// assignment completion), NOT a fee dashboard. Fees move to their own dedicated
@@ -28,7 +26,6 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
   @override
   Widget build(BuildContext context) {
     final childrenAsync = ref.watch(selfChildrenProvider);
-    final client = ref.watch(supabaseClientProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -42,6 +39,7 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                 return const Center(child: Text('No children linked to your account yet.'));
               }
               final selected = children.firstWhere((c) => c.studentId == _selectedStudentId, orElse: () => children.first);
+              final perfAsync = ref.watch(childPerformanceProvider(selected.studentId));
 
               return CustomScrollView(
                 slivers: [
@@ -82,23 +80,16 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                     sliver: SliverFillRemaining(
                       fillOverscroll: true,
                       hasScrollBody: false,
-                      child: FutureBuilder<_ChildPerformance>(
-                        future: _loadPerformance(client, selected.studentId),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState != ConnectionState.done) {
-                            return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                          }
-                          if (snapshot.hasError) {
-                            return Text('Failed to load: ${snapshot.error}');
-                          }
-                          final perf = snapshot.data!;
-
+                      child: perfAsync.when(
+                        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                        error: (e, _) => Center(child: Text('Failed to load: $e')),
+                        data: (perf) {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('${selected.fullName} · ${selected.admissionNumber}', style: Theme.of(context).textTheme.titleMedium),
                               const SizedBox(height: 16),
-                               Row(
+                              Row(
                                 children: [
                                   Expanded(
                                     child: GlassCard(
@@ -160,7 +151,7 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                                       fontWeight: FontWeight.bold,
                                       shadows: [
                                         Shadow(
-                                          color: Colors.black.withOpacity(0.4),
+                                          color: Colors.black.withValues(alpha: 0.4),
                                           offset: const Offset(0, 1),
                                           blurRadius: 4,
                                         ),
@@ -193,63 +184,6 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
       ),
     );
   }
-
-  Future<_ChildPerformance> _loadPerformance(SupabaseClient client, String studentId) async {
-    final attendanceRaw = await client
-        .schema('attendance')
-        .from('records')
-        .select('status')
-        .eq('student_id', studentId)
-        .order('date', ascending: false)
-        .limit(30);
-    final attendance = List<Map<String, dynamic>>.from(attendanceRaw as List);
-    final attendancePercent = attendance.isEmpty ? 0.0 : attendance.where((a) => a['status'] == 'present').length / attendance.length * 100;
-
-    final grades = await client.schema('academic').from('grades').select('marks_obtained, max_marks').eq('student_id', studentId);
-    double? avgMarksPercent;
-    if ((grades as List).isNotEmpty) {
-      final percentages = grades.map((g) => (g['marks_obtained'] as num) / (g['max_marks'] as num) * 100).toList();
-      avgMarksPercent = percentages.reduce((a, b) => a + b) / percentages.length;
-    }
-
-    final roster = await client.schema('academic').from('class_roster').select('class_id').eq('student_id', studentId).maybeSingle();
-    int totalAssignments = 0;
-    int submittedAssignments = 0;
-    if (roster != null) {
-      final assignments = await client.schema('academic').from('assignments').select('id').eq('class_id', roster['class_id']);
-      totalAssignments = (assignments as List).length;
-      final assignmentIds = assignments.map((a) => a['id']).toList();
-      if (assignmentIds.isNotEmpty) {
-        final submissions = await client
-            .schema('academic')
-            .from('submissions')
-            .select('id')
-            .eq('student_id', studentId)
-            .inFilter('assignment_id', assignmentIds);
-        submittedAssignments = (submissions as List).length;
-      }
-    }
-
-    return _ChildPerformance(
-      attendancePercent: attendancePercent,
-      avgMarksPercent: avgMarksPercent,
-      totalAssignments: totalAssignments,
-      submittedAssignments: submittedAssignments,
-    );
-  }
-}
-
-class _ChildPerformance {
-  _ChildPerformance({
-    required this.attendancePercent,
-    required this.avgMarksPercent,
-    required this.totalAssignments,
-    required this.submittedAssignments,
-  });
-  final double attendancePercent;
-  final double? avgMarksPercent;
-  final int totalAssignments;
-  final int submittedAssignments;
 }
 
 class _QuickLinkTile extends StatelessWidget {

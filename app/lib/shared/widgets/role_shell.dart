@@ -425,7 +425,12 @@ class _WorkspaceToggle extends ConsumerWidget {
         ],
         selected: {current},
         onSelectionChanged: (sel) {
-          ref.read(adminWorkspaceProvider.notifier).setWorkspace(sel.first);
+          final newWs = sel.first;
+          ref.read(adminWorkspaceProvider.notifier).setWorkspace(newWs);
+          final targetRoute = newWs == AdminWorkspace.hr
+              ? '/admin/hr-overview'
+              : '/admin/finance-overview';
+          context.go(targetRoute);
         },
         style: SegmentedButton.styleFrom(
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),

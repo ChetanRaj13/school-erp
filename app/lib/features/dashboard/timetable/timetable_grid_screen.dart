@@ -150,8 +150,11 @@ class _TimetableGridScreenState extends ConsumerState<TimetableGridScreen> {
         .from('subjects')
         .select('id, name, periods_per_week');
 
-    final classRows =
-        await client.schema('academic').from('classes').select('id, name');
+    final classRows = await client
+        .schema('academic')
+        .from('classes')
+        .select('id, name')
+        .eq('is_archived', false);
 
     final staffRows =
         await client.schema('public').from('staff').select('id, full_name');

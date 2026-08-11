@@ -196,7 +196,7 @@ class _SearchableListState<T extends Map<String, dynamic>, C extends ConsumerSta
                       Text(_error!, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
                       const SizedBox(height: 16),
                       ElevatedButton(
-                        onPressed: _loadData,
+                        onPressed: _refresh,
                         child: const Text('Retry'),
                       ),
                     ],

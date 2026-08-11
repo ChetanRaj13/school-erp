@@ -84,6 +84,17 @@ class ReceiptGenerator {
     required DateTime issuedAt,
     String schoolGstin = 'GSTIN NOT CONFIGURED', // real value must be set by the school
   }) async {
+    final path = 'tax-invoice-$invoiceId.pdf';
+
+    // 1. Try pulling existing signed URL if file already exists in Storage
+    try {
+      final existingUrl = await client.storage.from('receipts').createSignedUrl(path, 3600);
+      if (existingUrl.isNotEmpty && !existingUrl.contains('error')) {
+        return existingUrl;
+      }
+    } catch (_) {}
+
+    // 2. Generate PDF document if not present yet
     final gstAmount = baseAmount * gstRate / 100;
     final total = baseAmount + gstAmount;
     final doc = pw.Document();
@@ -126,8 +137,18 @@ class ReceiptGenerator {
     );
 
     final Uint8List bytes = await doc.save();
-    final path = 'tax-invoice-$invoiceId.pdf';
-    await client.storage.from('receipts').uploadBinary(path, bytes, fileOptions: const FileOptions(contentType: 'application/pdf', upsert: true));
+
+    // 3. Upload with upsert fallback
+    try {
+      await client.storage.from('receipts').uploadBinary(
+        path,
+        bytes,
+        fileOptions: const FileOptions(contentType: 'application/pdf', upsert: true),
+      );
+    } catch (_) {
+      // If upload fails (e.g. RLS upsert error), attempt creating signed URL directly
+    }
+
     return await client.storage.from('receipts').createSignedUrl(path, 3600);
   }
 

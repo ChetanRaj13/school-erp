@@ -35,7 +35,7 @@ services:
     build:
       context: ./services/document-extraction
     ports:
-      - "8003:8003"  # TODO: FIX — collides with timetable-solver, see that Dockerfile's port note. Change to 8005 here AND in document-extraction.Dockerfile once confirmed.
+      - "8005:8005"
     env_file:
       - ./services/document-extraction/.env
 
@@ -43,6 +43,6 @@ services:
     build:
       context: ./services/omr-pipeline
     ports:
-      - "8006:8006"
+      - "8002:8002"
     env_file:
       - ./services/omr-pipeline/.env

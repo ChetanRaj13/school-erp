@@ -4,8 +4,7 @@
 # FastAPI service with generate_omr.py / scan_omr.py / test_pipeline.py per earlier
 # session context. Confirm the entrypoint filename and port before trusting this file;
 # adjust CMD if the app object isn't literally `main:app`, and adjust EXPOSE to
-# whatever port it's actually run on (8006 suggested as a free port, since
-# 8003/8004/8005 are taken by the other three services).
+# port 8002 (matching main.py docstring).
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -21,7 +20,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8006
-# TODO verify actual port + confirm entrypoint is main:app before trusting this CMD.
+EXPOSE 8002
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

@@ -156,37 +156,41 @@ RoleNav navFor(UserRole role) {
         ]),
         NavSection(header: 'Finance', destinations: [
           NavDestination(
-              icon: Icons.receipt_long_outlined,
-              label: 'Fee Management',
-              route: '/admin/fees'),
-          NavDestination(
-              icon: Icons.payments_outlined,
-              label: 'Offline Payments',
-              route: '/admin/offline-payments'),
+              icon: Icons.storefront_outlined,
+              label: 'Vendors & Procurement',
+              route: '/admin/vendors'),
           NavDestination(
               icon: Icons.pending_actions_outlined,
               label: 'Finance Approvals',
               route: '/admin/approvals/finance'),
           NavDestination(
-              icon: Icons.storefront_outlined,
-              label: 'Vendors & Procurement',
-              route: '/admin/vendors'),
-          NavDestination(
-              icon: Icons.bar_chart_outlined,
-              label: 'Vendor Performance',
-              route: '/admin/vendor-performance'),
-          NavDestination(
               icon: Icons.credit_score_outlined,
               label: 'EMI / Fee Financing',
               route: '/admin/emi'),
-          NavDestination(
-              icon: Icons.pie_chart_outline, label: 'Budget', route: '/admin/budget'),
           NavDestination(
               icon: Icons.timer_outlined, label: 'Late Fees', route: '/admin/late-fees'),
           NavDestination(
               icon: Icons.volunteer_activism_outlined,
               label: 'Scholarships & Waivers',
               route: '/admin/waivers'),
+          NavDestination(
+              icon: Icons.pie_chart_outline, label: 'Budget', route: '/admin/budget'),
+          NavDestination(
+              icon: Icons.account_balance_outlined,
+              label: 'Bank Reconciliation',
+              route: '/admin/bank-reconciliation'),
+          NavDestination(
+              icon: Icons.receipt_long_outlined,
+              label: 'Fee Management',
+              route: '/admin/fees'),
+          NavDestination(
+              icon: Icons.payments_outlined,
+              label: 'Offline Payment Entry',
+              route: '/admin/offline-payments'),
+          NavDestination(
+              icon: Icons.history_outlined,
+              label: 'Recent Payments',
+              route: '/admin/recent-payments'),
         ]),
         NavSection(header: 'Operations', destinations: [
           NavDestination(

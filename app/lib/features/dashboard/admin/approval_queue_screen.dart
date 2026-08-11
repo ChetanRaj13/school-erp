@@ -144,6 +144,8 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
       final query = _searchQuery.toLowerCase();
       filtered = filtered.where((item) {
         return (item['description']?.toString().toLowerCase().contains(query) ?? false) ||
+               (item['category']?.toString().toLowerCase().contains(query) ?? false) ||
+               (item['po_number']?.toString().toLowerCase().contains(query) ?? false) ||
                (item['requested_by']?.toString().toLowerCase().contains(query) ?? false) ||
                ((item['amount'] as num?)?.toString().contains(_searchQuery) ?? false);
       }).toList();
@@ -241,7 +243,6 @@ class _ApprovalQueueScreenState extends ConsumerState<ApprovalQueueScreen> {
                           setState(() {
                             _searchQuery = value;
                           });
-                          _refresh();
                         },
                         sorts: SortOptions.allFields,
                         currentSortValue: _sortOption?.value,

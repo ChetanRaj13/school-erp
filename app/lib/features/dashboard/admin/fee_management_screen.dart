@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/receipt_generator.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 import '../../../shared/widgets/search_filter/search_filter_bar.dart';
@@ -35,6 +37,21 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
   String _searchQuery = '';
   SortOption? _sortOption;
   String _filterValue = 'all';
+
+  // Generated GST Invoice URL cache by invoice ID
+  final Map<String, String> _generatedGstUrls = {};
+
+  void _onSearchOverdue(String q) {
+    setState(() {
+      _searchQuery = q;
+    });
+  }
+
+  void _onSortOverdue(SortOption option) {
+    setState(() {
+      _sortOption = option;
+    });
+  }
 
   @override
   void initState() {
@@ -130,6 +147,100 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
     } catch (e) {
       _refresh('Failed: $e', isError: true);
     }
+  }
+
+  Future<void> _generateGstInvoice(Map<String, dynamic> invoice) async {
+    final invoiceId = invoice['id'] as String;
+
+    // If already generated, immediately open existing PDF signed URL!
+    if (_generatedGstUrls.containsKey(invoiceId)) {
+      final cachedUrl = _generatedGstUrls[invoiceId]!;
+      final uri = Uri.parse(cachedUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      if (!mounted) return;
+      _showGstDialog(invoice, cachedUrl);
+      return;
+    }
+
+    final client = ref.read(supabaseClientProvider);
+    try {
+      final invoiceNumber = (invoice['invoice_number'] as String?) ?? 'INV-${invoiceId.substring(0, 8)}';
+      final studentName = (invoice['student_name'] as String?) ?? 'Student';
+      final admissionNumber = (invoice['admission_number'] as String?) ?? 'ADM-001';
+      final baseAmount = (invoice['amount_due'] as num).toDouble();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Generating GST Tax Invoice PDF...'), backgroundColor: AppColors.primary),
+      );
+
+      final pdfUrl = await ReceiptGenerator.generateGstInvoiceAndUpload(
+        client: client,
+        invoiceId: invoiceId,
+        invoiceNumber: invoiceNumber,
+        studentName: studentName,
+        admissionNumber: admissionNumber,
+        feeStructureName: 'Tuition & Academic Fees',
+        baseAmount: baseAmount,
+        gstRate: 18.0,
+        issuedAt: DateTime.now(),
+      );
+
+      setState(() {
+        _generatedGstUrls[invoiceId] = pdfUrl;
+      });
+
+      // Auto open PDF in browser
+      final uri = Uri.parse(pdfUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+
+      if (!mounted) return;
+      _showGstDialog(invoice, pdfUrl);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to generate GST invoice: $e'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  void _showGstDialog(Map<String, dynamic> invoice, String pdfUrl) {
+    final invoiceNumber = (invoice['invoice_number'] as String?) ?? 'INV-${(invoice['id'] as String).substring(0, 8)}';
+    final studentName = (invoice['student_name'] as String?) ?? 'Student';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('GST Tax Invoice Ready'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('GST Invoice $invoiceNumber for $studentName is ready.'),
+            const SizedBox(height: 12),
+            SelectableText('PDF URL:\n$pdfUrl', style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final u = Uri.parse(pdfUrl);
+              if (await canLaunchUrl(u)) {
+                await launchUrl(u, mode: LaunchMode.externalApplication);
+              }
+            },
+            icon: const Icon(Icons.open_in_new, size: 16),
+            label: const Text('Open / View PDF'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _sendBulkReminders(List<Map<String, dynamic>> invoices) async {
@@ -309,26 +420,7 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
     }
   }
 
-  // Filter and sort handlers for the overdue tab
-  void _onSearchOverdue(String value) {
-    if (!mounted) return;
-    setState(() {
-      _searchQuery = value;
-      _refreshOverdueTab();
-    });
-  }
 
-  void _onSortOverdue(SortOption option) {
-    if (!mounted) return;
-    setState(() {
-      _sortOption = option;
-      _refreshOverdueTab();
-    });
-  }
-
-  void _refreshOverdueTab() {
-    setState(() => _future = _load());
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -427,9 +519,11 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
           child: SearchFilterBar(
             hintText: 'Search by student name...',
+            searchQuery: _searchQuery,
+            showClearSearch: true,
             onSearch: _onSearchOverdue,
             sorts: SortOptions.feeRelated,
-              currentSortValue: _sortOption?.value,
+            currentSortValue: _sortOption?.value,
             onSortSelected: _onSortOverdue,
           ),
         ),
@@ -444,38 +538,121 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
             ),
           ),
         Expanded(
+          child: filteredOverdue.isEmpty
+              ? const Center(child: Text('No matching overdue invoices.'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: filteredOverdue.length,
+                  itemBuilder: (context, index) {
+                    final inv = filteredOverdue[index];
+                    final remaining = (inv['amount_due'] as num).toDouble() - (inv['amount_paid'] as num).toDouble();
+                    final selected = _selectedOverdueIds.contains(inv['id']);
+                    final hasGstPdf = _generatedGstUrls.containsKey(inv['id']);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: GlassCard(
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: selected,
+                              onChanged: (v) => setState(() {
+                                if (v == true) {
+                                  _selectedOverdueIds.add(inv['id'] as String);
+                                } else {
+                                  _selectedOverdueIds.remove(inv['id']);
+                                }
+                              }),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(inv['student_name'] as String, style: Theme.of(context).textTheme.titleMedium),
+                                  Text('₹${remaining.toStringAsFixed(0)} · overdue since ${inv['due_date']}', style: const TextStyle(color: AppColors.error)),
+                                ],
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextButton(onPressed: () => _sendReminder(inv), child: const Text('Remind')),
+                                const SizedBox(width: 4),
+                                OutlinedButton.icon(
+                                  onPressed: () => _generateGstInvoice(inv),
+                                  icon: Icon(hasGstPdf ? Icons.picture_as_pdf : Icons.picture_as_pdf_outlined, size: 16),
+                                  label: Text(hasGstPdf ? 'View GST Invoice' : 'GST Invoice'),
+                                  style: hasGstPdf ? OutlinedButton.styleFrom(foregroundColor: AppColors.success) : null,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUpcomingTab(_FeeManagementData data, List<Map<String, dynamic>> upcoming) {
+    List<Map<String, dynamic>> filteredUpcoming = upcoming;
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filteredUpcoming = filteredUpcoming.where((i) {
+        return i['student_name']?.toLowerCase().contains(query) ?? false;
+      }).toList();
+    }
+
+    if (filteredUpcoming.isEmpty) return const Center(child: Text('Nothing upcoming.'));
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          child: SearchFilterBar(
+            hintText: 'Search upcoming by student name...',
+            searchQuery: _searchQuery,
+            showClearSearch: true,
+            onSearch: _onSearchOverdue,
+          ),
+        ),
+        Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(20),
-            itemCount: filteredOverdue.length,
+            itemCount: filteredUpcoming.length,
             itemBuilder: (context, index) {
-              final inv = filteredOverdue[index];
+              final inv = filteredUpcoming[index];
               final remaining = (inv['amount_due'] as num).toDouble() - (inv['amount_paid'] as num).toDouble();
-              final selected = _selectedOverdueIds.contains(inv['id']);
+              final hasGstPdf = _generatedGstUrls.containsKey(inv['id']);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: GlassCard(
                   child: Row(
                     children: [
-                      Checkbox(
-                        value: selected,
-                        onChanged: (v) => setState(() {
-                          if (v == true) {
-                            _selectedOverdueIds.add(inv['id'] as String);
-                          } else {
-                            _selectedOverdueIds.remove(inv['id']);
-                          }
-                        }),
-                      ),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(inv['student_name'] as String, style: Theme.of(context).textTheme.titleMedium),
-                            Text('₹${remaining.toStringAsFixed(0)} · overdue since ${inv['due_date']}', style: const TextStyle(color: AppColors.error)),
+                            Text('₹${remaining.toStringAsFixed(0)} · due ${inv['due_date']}', style: Theme.of(context).textTheme.bodyMedium),
                           ],
                         ),
                       ),
-                      TextButton(onPressed: () => _sendReminder(inv), child: const Text('Remind')),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton(onPressed: () => _sendReminder(inv), child: const Text('Remind')),
+                          const SizedBox(width: 4),
+                          OutlinedButton.icon(
+                            onPressed: () => _generateGstInvoice(inv),
+                            icon: Icon(hasGstPdf ? Icons.picture_as_pdf : Icons.picture_as_pdf_outlined, size: 16),
+                            label: Text(hasGstPdf ? 'View GST Invoice' : 'GST Invoice'),
+                            style: hasGstPdf ? OutlinedButton.styleFrom(foregroundColor: AppColors.success) : null,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -484,38 +661,6 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildUpcomingTab(_FeeManagementData data, List<Map<String, dynamic>> upcoming) {
-    if (upcoming.isEmpty) return const Center(child: Text('Nothing upcoming.'));
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: upcoming.length,
-      itemBuilder: (context, index) {
-        final inv = upcoming[index];
-        final remaining = (inv['amount_due'] as num).toDouble() - (inv['amount_paid'] as num).toDouble();
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: GlassCard(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(inv['student_name'] as String, style: Theme.of(context).textTheme.titleMedium),
-                      Text('₹${remaining.toStringAsFixed(0)} · due ${inv['due_date']}', style: Theme.of(context).textTheme.bodyMedium),
-                    ],
-                  ),
-                ),
-                TextButton(onPressed: () => _sendReminder(inv), child: const Text('Remind')),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 

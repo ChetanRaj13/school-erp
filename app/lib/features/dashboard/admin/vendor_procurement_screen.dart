@@ -119,8 +119,32 @@ class _VendorProcurementScreenState extends ConsumerState<VendorProcurementScree
 
   void _showCreateOrderSheet(List<Map<String, dynamic>> vendors) {
     if (vendors.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a vendor first.'), backgroundColor: AppColors.warning),
+      final nameController = TextEditingController();
+      final contactController = TextEditingController();
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Add New Vendor'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Vendor Name')),
+              const SizedBox(height: 8),
+              TextField(controller: contactController, decoration: const InputDecoration(labelText: 'Contact Info')),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                if (nameController.text.trim().isEmpty) return;
+                Navigator.pop(context);
+                _addVendor(nameController.text.trim(), contactController.text.trim());
+              },
+              child: const Text('Add Vendor'),
+            ),
+          ],
+        ),
       );
       return;
     }
@@ -193,6 +217,17 @@ class _VendorProcurementScreenState extends ConsumerState<VendorProcurementScree
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      floatingActionButton: FutureBuilder<_VendorData>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const SizedBox.shrink();
+          return FloatingActionButton.extended(
+            onPressed: () => _showCreateOrderSheet(snapshot.data!.vendors),
+            icon: const Icon(Icons.add),
+            label: const Text('New Order'),
+          );
+        },
+      ),
       body: WarmBackdrop(
         child: SafeArea(
           child: FutureBuilder<_VendorData>(
@@ -206,6 +241,24 @@ class _VendorProcurementScreenState extends ConsumerState<VendorProcurementScree
               }
               final data = snapshot.data!;
               final vendorNameById = {for (final v in data.vendors) v['id'] as String: v['name'] as String};
+
+              var filteredVendors = data.vendors;
+              var filteredOrders = data.orders;
+              if (_searchQuery.isNotEmpty) {
+                final query = _searchQuery.toLowerCase();
+                filteredVendors = filteredVendors.where((v) {
+                  final name = (v['name'] as String?)?.toLowerCase() ?? '';
+                  final contact = (v['contact_info'] as String?)?.toLowerCase() ?? '';
+                  return name.contains(query) || contact.contains(query);
+                }).toList();
+
+                filteredOrders = filteredOrders.where((o) {
+                  final desc = (o['description'] as String?)?.toLowerCase() ?? '';
+                  final cat = (o['category'] as String?)?.toLowerCase() ?? '';
+                  final vName = (vendorNameById[o['vendor_id']] as String?)?.toLowerCase() ?? '';
+                  return desc.contains(query) || cat.contains(query) || vName.contains(query);
+                }).toList();
+              }
 
               return CustomScrollView(
                 slivers: [
@@ -228,7 +281,6 @@ class _VendorProcurementScreenState extends ConsumerState<VendorProcurementScree
                         onSearch: (value) {
                           setState(() {
                             _searchQuery = value;
-                            _future = _load();
                           });
                         },
                         sorts: [
@@ -254,37 +306,37 @@ class _VendorProcurementScreenState extends ConsumerState<VendorProcurementScree
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
-                          Text('${data.vendors.length} vendors', style: Theme.of(context).textTheme.bodyMedium),
+                          Text('${filteredVendors.length} vendor${filteredVendors.length == 1 ? '' : 's'}', style: Theme.of(context).textTheme.bodyMedium),
                           const SizedBox(height: 8),
-                          ...data.vendors.map((v) => Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: GlassCard(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.storefront_outlined, color: AppColors.primary, size: 20),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(v['name'] as String, style: Theme.of(context).textTheme.titleMedium),
-                                            if ((v['contact_info'] as String?)?.isNotEmpty ?? false)
-                                              Text(v['contact_info'] as String, style: Theme.of(context).textTheme.bodyMedium),
-                                          ],
+                          ...filteredVendors.map((v) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: GlassCard(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.storefront_outlined, color: AppColors.primary, size: 20),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(v['name'] as String, style: Theme.of(context).textTheme.titleMedium),
+                                              if ((v['contact_info'] as String?)?.isNotEmpty ?? false)
+                                                Text(v['contact_info'] as String, style: Theme.of(context).textTheme.bodyMedium),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              )),
+                                )),
                           const SizedBox(height: 20),
                           Text('Purchase Orders', style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 8),
-                          if (data.orders.isEmpty)
-                            const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('No purchase orders yet.'))
+                          if (filteredOrders.isEmpty)
+                            const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('No matching purchase orders.'))
                           else
-                            ...data.orders.map((o) {
+                            ...filteredOrders.map((o) {
                               final status = o['status'] as String;
                               final statusColor = switch (status) {
                                 'paid' => AppColors.success,

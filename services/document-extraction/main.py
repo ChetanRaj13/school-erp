@@ -7,7 +7,7 @@ Human-in-the-loop: /extract never writes to students. /commit requires explicit 
 Uses service-role key (bypasses RLS). Same pattern as timetable-solver/main.py.
 
 Start with:
-    uvicorn main:app --reload --port 8003
+    uvicorn main:app --reload --port 8005
 """
 
 import os

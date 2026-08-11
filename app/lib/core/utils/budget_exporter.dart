@@ -22,81 +22,86 @@ class BudgetPDFExporter {
     pdf.addPage(
       pw.Page(
         build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            _buildHeader(context, title, fiscalYear, generatedAt),
-            pw.Expanded(child: _buildKPISection(context, kpis)),
+            _buildHeader(title, fiscalYear, generatedAt),
+            pw.SizedBox(height: 16),
+            _buildKPISection(kpis),
             pw.SizedBox(height: 20),
-            _buildCategoriesTable(context, categories),
+            _buildCategoriesTable(categories),
             if (forecast != null) ...[
               pw.SizedBox(height: 20),
-              _buildForecastSection(context, forecast),
+              _buildForecastSection(forecast),
             ],
           ],
         ),
       ),
     );
 
-    // Add audit trail page (brief)
-    // TODO: Include detailed audit trail in separate page
-
-    final bytes = pdf.save();
-    // Return path where file was saved or the bytes
-    // In practice, you'd save this to a file or provide download
-    return 'budget_report_$fiscalYear_${DateFormat('yyyyMMdd_HHmmss').format(generatedAt)}.pdf';
+    await pdf.save();
+    return 'budget_report_${fiscalYear}_${DateFormat('yyyyMMdd_HHmmss').format(generatedAt)}.pdf';
   }
 
-  static pw.Widget _buildHeader(BuildContext context, String title, String fiscalYear, DateTime generatedAt) {
+  static pw.Widget _buildHeader(String title, String fiscalYear, DateTime generatedAt) {
     return pw.Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const pw.EdgeInsets.all(16),
       child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(title, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 8),
-              pw.Text('Budget Report', style: pw.TextStyle(fontSize: 16, color: pw.Colors.grey)),
+              pw.SizedBox(height: 4),
+              pw.Text('Budget Report', style: const pw.TextStyle(fontSize: 16, color: PdfColors.grey700)),
             ],
           ),
-          pw.Expanded(
-            child: pw.Alignment(
-              alignment: pw.Alignment.topRight,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text('Fiscal Year: $fiscalYear', style: pw.TextStyle(fontSize: 14)),
-                  pw.Text('Generated: ${DateFormat('MMM d, yyyy - HH:mm').format(generatedAt)}', style: pw.TextStyle(fontSize: 12, color: pw.Colors.grey)),
-                ],
-              ),
-            ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text('Fiscal Year: $fiscalYear', style: const pw.TextStyle(fontSize: 14)),
+              pw.Text('Generated: ${DateFormat('MMM d, yyyy - HH:mm').format(generatedAt)}', style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey600)),
+            ],
           ),
         ],
       ),
     );
   }
 
-  static pw.Widget _buildKPISection(BuildContext context, List<BudgetKPI> kpis) {
+  static pw.Widget _buildKPISection(List<BudgetKPI> kpis) {
     return pw.Container(
-      padding: const EdgeInsets.all(16),
-      decoration: pw.BoxDecoration(color: pw.Colors.blueGrey.shade50, border: pw.Border.all(pw.Colors.blueGrey.shade300)),
+      padding: const pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.blueGrey50,
+        border: pw.Border.all(color: PdfColors.blueGrey300),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text('Key Performance Indicators', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 12),
-          pw.Grid.count(
-            4,
-            children: kpis.map((kpi) => pw.Card(
-              child: pw.Padding(
-                padding: const EdgeInsets.all(12),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(kpi.label, style: pw.TextStyle(fontSize: 12, color: pw.Colors.grey)),
-                    pw.SizedBox(height: 8),
-                    pw.Text(kpi.value, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: _getKPIColor(kpi.status))),
-                  ],
-                ),
+          pw.Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: kpis.map((kpi) => pw.Container(
+              width: 110,
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.white,
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: pw.BorderRadius.circular(4),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(kpi.label, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    kpi.value,
+                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: _getKPIColor(kpi.status)),
+                  ),
+                ],
               ),
             )).toList(),
           ),
@@ -105,53 +110,59 @@ class BudgetPDFExporter {
     );
   }
 
-  static pw.Color _getKPIColor(String status) {
-    if (status == 'critical') return pw.Colors.red;
-    if (status == 'warning') return pw.Colors.orange;
-    return pw.Colors.green;
+  static PdfColor _getKPIColor(String status) {
+    if (status == 'critical') return PdfColors.red;
+    if (status == 'warning') return PdfColors.orange;
+    return PdfColors.green;
   }
 
-  static pw.Widget _buildCategoriesTable(BuildContext context, List<BudgetCategory> categories) {
+  static pw.Widget _buildCategoriesTable(List<BudgetCategory> categories) {
+    final totalPlanned = categories.fold<double>(0.0, (sum, c) => sum + c.planned);
+    final totalActual = categories.fold<double>(0.0, (sum, c) => sum + c.actual);
+    final totalVariance = totalPlanned - totalActual;
+    final totalUtil = totalPlanned > 0 ? (totalActual / totalPlanned * 100) : 0.0;
+
     return pw.Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const pw.EdgeInsets.all(16),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text('Budget by Category', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 12),
           pw.Table(
-            border: pw.TableBorder.all(color: pw.Colors.grey.shade300),
+            border: pw.TableBorder.all(color: PdfColors.grey300),
             children: [
               pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.blueGrey100),
                 children: [
-                  pw.Cell(child: pw.Text('Category', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, backgroundColor: pw.Colors.blueGrey))),
-                  pw.Cell(child: pw.Text('Planned', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, backgroundColor: pw.Colors.blueGrey))),
-                  pw.Cell(child: pw.Text('Actual', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, backgroundColor: pw.Colors.blueGrey))),
-                  pw.Cell(child: pw.Text('Variance', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, backgroundColor: pw.Colors.blueGrey))),
-                  pw.Cell(child: pw.Text('Utilization', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, backgroundColor: pw.Colors.blueGrey))),
+                  _cell('Category', isHeader: true),
+                  _cell('Planned', isHeader: true),
+                  _cell('Actual', isHeader: true),
+                  _cell('Variance', isHeader: true),
+                  _cell('Utilization', isHeader: true),
                 ],
               ),
               ...categories.map((cat) => pw.TableRow(
                 children: [
-                  pw.Cell(child: pw.Text(cat.category)),
-                  pw.Cell(child: pw.Text('\$${cat.planned.toStringAsFixed(0)}')),
-                  pw.Cell(child: pw.Text('\$${cat.actual.toStringAsFixed(0)}')),
-                  pw.Cell(child: pw.Text('\$${(cat.planned - cat.actual).toStringAsFixed(0)}',
-                    style: pw.TextStyle(color: cat.planned >= cat.actual ? pw.Colors.green : pw.Colors.red))),
-                  pw.Cell(child: pw.Text('${(cat.utilization * 100).toStringAsFixed(1)}%')),
+                  _cell(cat.category),
+                  _cell('\$${cat.planned.toStringAsFixed(0)}'),
+                  _cell('\$${cat.actual.toStringAsFixed(0)}'),
+                  _cell(
+                    '\$${(cat.planned - cat.actual).toStringAsFixed(0)}',
+                    color: cat.planned >= cat.actual ? PdfColors.green : PdfColors.red,
+                  ),
+                  _cell('${(cat.utilization * 100).toStringAsFixed(1)}%'),
                 ],
               )),
               // Total row
               pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey100),
                 children: [
-                  pw.Cell(child: pw.Text('Total', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  pw.Cell(child: pw.Text('\$${categories.fold(0, (sum, c) => sum + c.planned).toStringAsFixed(0)}',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  pw.Cell(child: pw.Text('\$${categories.fold(0, (sum, c) => sum + c.actual).toStringAsFixed(0)}',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  pw.Cell(child: pw.Text('\$${(categories.fold(0, (sum, c) => sum + c.planned) - categories.fold(0, (sum, c) => sum + c.actual)).toStringAsFixed(0)}',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  pw.Cell(child: pw.Text('',)),
+                  _cell('Total', isHeader: true),
+                  _cell('\$${totalPlanned.toStringAsFixed(0)}', isHeader: true),
+                  _cell('\$${totalActual.toStringAsFixed(0)}', isHeader: true),
+                  _cell('\$${totalVariance.toStringAsFixed(0)}', isHeader: true),
+                  _cell('${totalUtil.toStringAsFixed(1)}%', isHeader: true),
                 ],
               ),
             ],
@@ -161,21 +172,42 @@ class BudgetPDFExporter {
     );
   }
 
-  static pw.Widget _buildForecastSection(BuildContext context, BudgetForecast forecast) {
+  static pw.Widget _cell(String text, {bool isHeader = false, PdfColor? color}) {
     return pw.Padding(
-      padding: const EdgeInsets.all(16),
-      decoration: pw.BoxDecoration(color: pw.Colors.amber.shade50, border: pw.Border.all(pw.Colors.amber.shade300)),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          fontSize: 11,
+          fontWeight: isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
+          color: color ?? PdfColors.black,
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _buildForecastSection(BudgetForecast forecast) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.amber50,
+        border: pw.Border.all(color: PdfColors.amber300),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text('Forecast Analysis', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: pw.Colors.amber.darkenBy(0.5))),
+          pw.Text('Forecast Analysis', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.amber900)),
           pw.SizedBox(height: 12),
-          pw.Text('Monthly Burn Rate: \$${forecast.currentMonthlyBurn.toStringAsFixed(0)}'),
-          pw.Text('Projected End-of-Year Spending: \${forecast.projectedEndOfYear.toStringAsFixed(0)}'),
-          pw.Text('Remaining Period: ${forecast.remainingPeriodMonths} months'),
-          pw.Text('Expected Utilization: ${forecast.expectedUtilizationPercent.toStringAsFixed(1)}%'),
-          pw.Text('Status: ${forecast.isOnTrack ? 'On Track' : 'Over Projected'}',
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: forecast.isOnTrack ? pw.Colors.green : pw.Colors.red)),
+          pw.Text('Monthly Burn Rate: \$${forecast.currentMonthlyBurn.toStringAsFixed(0)}', style: const pw.TextStyle(fontSize: 12)),
+          pw.Text('Projected End-of-Year Spending: \$${forecast.projectedEndOfYear.toStringAsFixed(0)}', style: const pw.TextStyle(fontSize: 12)),
+          pw.Text('Remaining Period: ${forecast.remainingPeriodMonths} months', style: const pw.TextStyle(fontSize: 12)),
+          pw.Text('Expected Utilization: ${forecast.expectedUtilizationPercent.toStringAsFixed(1)}%', style: const pw.TextStyle(fontSize: 12)),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'Status: ${forecast.isOnTrack ? 'On Track' : 'Over Projected'}',
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12, color: forecast.isOnTrack ? PdfColors.green : PdfColors.red),
+          ),
         ],
       ),
     );
@@ -194,32 +226,28 @@ class BudgetCSSEExporter {
     for (final budget in budgets) {
       final actual = actualByCategory[budget.category] ?? 0.0;
       final variance = budget.plannedAmount - actual;
-      final utilization = budget.plannedAmount > 0 ? (actual / budget.plannedAmount * 100) : 0;
+      final utilization = budget.plannedAmount > 0 ? (actual / budget.plannedAmount * 100) : 0.0;
 
       lines.add(
-        '"${budget.category.replaceDoubleQuotes('"')}","${budget.academicYear}",${budget.plannedAmount.toStringAsFixed(2)},${actual.toStringAsFixed(2)},${variance.toStringAsFixed(2)},${utilization.toStringAsFixed(1)}',
+        '"${escapeCSV(budget.category)}","${budget.academicYear}",${budget.plannedAmount.toStringAsFixed(2)},${actual.toStringAsFixed(2)},${variance.toStringAsFixed(2)},${utilization.toStringAsFixed(1)}',
       );
     }
 
     // Summary
-    final totalPlanned = budgets.map((b) => b.plannedAmount).reduce((a, b) => a + b);
-    final totalActual = actualByCategory.values.reduce((a, b) => a + b);
-    lines.add('');
-    lines.add('TOTAL,,,${totalPlanned.toStringAsFixed(2)},${totalActual.toStringAsFixed(2)},${(totalPlanned - totalActual).toStringAsFixed(2)},${(totalActual / totalPlanned * 100).toStringAsFixed(1)}%');
+    if (budgets.isNotEmpty) {
+      final totalPlanned = budgets.map((b) => b.plannedAmount).reduce((a, b) => a + b);
+      final totalActual = actualByCategory.values.isEmpty ? 0.0 : actualByCategory.values.reduce((a, b) => a + b);
+      lines.add('');
+      lines.add('TOTAL,,,${totalPlanned.toStringAsFixed(2)},${totalActual.toStringAsFixed(2)},${(totalPlanned - totalActual).toStringAsFixed(2)},${totalPlanned > 0 ? (totalActual / totalPlanned * 100).toStringAsFixed(1) : "0.0"}%');
+    }
 
-    return '\n'.join(lines);
+    return lines.join('\n');
   }
 
   static String escapeCSV(String value) {
     if (value.contains(',') || value.contains('"') || value.contains('\n')) {
-      return '\"' + value.replaceAll('"', '""') + '\"';
+      return value.replaceAll('"', '""');
     }
     return value;
-  }
-}
-
-extension StringExtension on String {
-  String replaceDoubleQuotes(String replace) {
-    return this.replaceAll('"', replace);
   }
 }

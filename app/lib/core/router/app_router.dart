@@ -2,13 +2,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../auth/auth_providers.dart';
+import '../../core/auth/admin_workspace_provider.dart';
+import '../../core/auth/auth_providers.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/auth/splash_screen.dart';
 import '../../features/auth/unauthorized_screen.dart';
 import '../../features/dashboard/principal/principal_dashboard.dart';
 import '../../features/dashboard/principal/budget_screen.dart';
-import '../../features/dashboard/admin/admin_dashboard.dart';
 import '../../features/dashboard/admin/admin_finance_overview_screen.dart';
 import '../../features/dashboard/admin/admin_hrm_overview_screen.dart';
 import '../../features/dashboard/admin/approval_queue_screen.dart';
@@ -21,21 +21,20 @@ import '../../features/dashboard/admin/messages_screen.dart';
 import '../../features/dashboard/admin/late_fees_screen.dart';
 import '../../features/dashboard/admin/offline_payment_screen.dart';
 import '../../features/dashboard/admin/fee_management_screen.dart';
+import '../../features/dashboard/admin/recent_payments_screen.dart';
+import '../../features/dashboard/admin/bank_reconciliation_screen.dart';
 import '../../features/dashboard/parent/waiver_requests_screen.dart';
-import '../../features/dashboard/teacher/teacher_dashboard.dart';
 import '../../features/dashboard/teacher/teacher_summary_screen.dart';
 import '../../features/dashboard/teacher/teacher_attendance_screen.dart';
 import '../../features/dashboard/teacher/gradebook_screen.dart';
 import '../../features/dashboard/teacher/lesson_resources_screen.dart';
 import '../../features/dashboard/teacher/leave_requests_screen.dart';
 import '../../features/dashboard/teacher/teacher_assignments_screen.dart';
-import '../../features/dashboard/student/student_dashboard.dart';
 import '../../features/dashboard/student/student_overview_screen.dart';
 import '../../features/dashboard/student/student_schedule_screen.dart';
 import '../../features/dashboard/student/student_progress_screen.dart';
 import '../../features/dashboard/student/student_library_screen.dart';
 import '../../features/dashboard/student/student_assignments_screen.dart';
-import '../../features/dashboard/parent/parent_dashboard.dart';
 import '../../features/dashboard/parent/parent_overview_screen.dart';
 import '../../features/dashboard/parent/parent_fees_screen.dart';
 import '../../features/dashboard/parent/parent_schedule_screen.dart';
@@ -91,6 +90,8 @@ const _sharedRoutes = <_RouteDef>[
   _RouteDef('/admin/waivers', _waivers),
   _RouteDef('/admin/fees', _feeManagement),
   _RouteDef('/admin/offline-payments', _offlinePayments),
+  _RouteDef('/admin/recent-payments', _recentPayments),
+  _RouteDef('/admin/bank-reconciliation', _bankReconciliation),
 
   // Settings (all roles).
   _RouteDef('/settings', _settings),
@@ -124,9 +125,19 @@ const _sharedRoutes = <_RouteDef>[
 // Top-level builder functions so the const list above can reference them (const ctors
 // can't reference inline closures). Keeping them tiny + colocated with the route table.
 Widget _principal(_, __) => const PrincipalDashboard();
-Widget _admin(_, __) => const AdminDashboard();
+Widget _admin(_, __) => const _AdminWorkspaceRouterWidget();
 Widget _adminHrOverview(_, __) => const AdminHrmOverviewScreen();
 Widget _adminFinanceOverview(_, __) => const AdminFinanceOverviewScreen();
+
+class _AdminWorkspaceRouterWidget extends ConsumerWidget {
+  const _AdminWorkspaceRouterWidget();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ws = ref.watch(adminWorkspaceProvider);
+    return ws == AdminWorkspace.hr ? const AdminHrmOverviewScreen() : const AdminFinanceOverviewScreen();
+  }
+}
 Widget _teacher(_, __) => const TeacherSummaryScreen();
 Widget _student(_, __) => const StudentOverviewScreen();
 Widget _parent(_, __) => const ParentOverviewScreen();
@@ -159,6 +170,8 @@ Widget _parentSchedule(_, __) => const ParentScheduleScreen();
 Widget _parentNotifications(_, __) => const ParentNotificationsScreen();
 Widget _feeManagement(_, __) => const FeeManagementScreen();
 Widget _offlinePayments(_, __) => const OfflinePaymentScreen();
+Widget _recentPayments(_, __) => const RecentPaymentsScreen();
+Widget _bankReconciliation(_, __) => const BankReconciliationScreen();
 Widget _settings(_, __) => const SettingsScreen();
 
 final appRouterProvider = Provider<GoRouter>((ref) {
