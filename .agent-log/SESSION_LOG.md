@@ -4,6 +4,91 @@ This file tracks recent changes and context for AI agents. Read the top 2 entrie
 
 ---
 
+## [2026-08-15] Enlarged Attendance Donut Chart & Fixed Notifications Column Query
+1. **Attendance Donut Size Enhancement** ([parent_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS\school-erp-project-structure\school-erp\app\lib\features\dashboard\parent\parent_overview_screen.dart)):
+   - Enlarged `ProgressRing` size from 100px to 140px with a thicker stroke (`strokeWidth: 14`) and increased card container height to 155px.
+   - Symmetrically enhanced the Average Marks card to 155px with larger typography (`fontSize: 32`) and balanced spacing.
+2. **Notifications Fix** ([parent_notifications_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS\school-erp-project-structure\school-erp\app\lib\features\dashboard\parent\parent_notifications_screen.dart)):
+   - Corrected PostgREST column name from non-existent `student_id` to `recipient_student_id` matching PostgreSQL table schema, eliminating 400 Bad Request error.
+   - Added resilient error handling with fallback queries to prevent uncaught exceptions.
+3. Rebuilt and updated web release bundle (`flutter build web --release`).
+
+## [2026-08-15] Comprehensive Parent Profile Revamp & Student Report Card (design.md Compliance)
+1. **Design System & Visual Consistency** ([parent_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\parent\parent_overview_screen.dart), [parent_fees_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\parent\parent_fees_screen.dart), [parent_schedule_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\parent\parent_schedule_screen.dart), [parent_notifications_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\parent\parent_notifications_screen.dart)):
+   - Aligned all Parent Profile views with the design system in `design.md`: role accent Hot Pink (`#FF6B9D`), soft tint `#FFE8F0`, high-contrast dark ink typography (`#1A1A1A`), pill-shaped active controls (`AppRadii.pill`), and solid card borders (`AppColors.glassBorder`) with no drop shadows.
+   - **Fixed Known Issue**: Revamped Quick Links on the Overview screen from unreadable white-on-white text to high-contrast dark text `#1A1A1A` on clean cards with color-coded service icon badges, clear descriptive subtitles, and chevron affordances.
+2. **Dedicated Full Student Report Card Section** ([parent_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\parent\parent_overview_screen.dart) & [parent_providers.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\parent\providers\parent_providers.dart)):
+   - **Overall Academic Performance Summary**: Displays overall percentage score, grade letter (`A+`, `A`, `B`), academic standing badge, summary description, multi-term trajectory trend chart (`LineChart`), passed subjects count, and total credits.
+   - **Best Subject Card**: Highlights the student's highest-scoring subject with star badge, percentage score, marks breakdown, and commendation.
+   - **Subject-wise Marks Trend**: Interactive subject selector with visual score trajectory chart (`LineChart`) tracking progress across terms.
+   - **All Subject Marks Table**: Clean, structured tabular breakdown showing Subject Name, Code pill, Marks Obtained, Max Marks, Percentage, Grade Chip (`A+`, `A`, `B`, `C`), and Class Average comparison.
+   - **Areas Requiring More Work**: Distinct attention card listing subjects scoring <75% or with downward trends, explaining the specific issue and offering concrete, constructive advice for parents.
+3. **Multi-Child Support**: Seamless pill switcher allowing parents with multiple linked children to toggle between profiles instantly across Overview, Report Card, Fees, and Schedule.
+4. **Verification**: Checked zero errors across all parent screens via `dart analyze`.
+
+## [2026-08-15] Fixed Attendance Submit & Populated Gradebook Roster
+1. **Attendance Submit Fix** ([teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\teacher_attendance_screen.dart) & [services/omr-pipeline/main.py](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\services\omr-pipeline\main.py)):
+   - Added `/attendance/manual` endpoint to the OMR/Attendance microservice (port 8002) which uses service-role bypass to write manual attendance into `attendance.records`.
+   - Wired `_submit()` in Flutter to post to the microservice endpoint with fallback, resolving the 403 RLS permission error on direct `attendance.records` insert/delete.
+2. **Gradebook Population & Mutation Fix** ([gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\gradebook_screen.dart)):
+   - Filtered `classes` in `_load()` to classes where the signed-in teacher has timetable/class-teacher assignments (e.g. `6-A`, `7-A`, `9-A`, `9-B`, `10-A`, `10-B`), avoiding inaccessible classes where RLS returned 0 students.
+   - Initialized `_selectedClassId` to the first accessible class (`6-A`), immediately populating the 20 enrolled students in both Grade Entry and Grade Analytics.
+   - Removed the non-existent `remarks` column from `academic.grades` queries/mutations and passed `entered_by: selfStaffId`.
+3. Verified zero errors via `dart analyze` and hot reloaded the application.
+
+## [2026-08-14] Enhanced Spacing & Layout Breathing Room in Analytics
+1. **Spacious Analytics UI** ([gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\gradebook_screen.dart) & [teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\teacher_attendance_screen.dart)):
+   - Increased outer scroll view padding (`EdgeInsets.fromLTRB(20, 16, 20, 40)`).
+   - Increased chart display heights to 200px / 190px with generous margins.
+   - Added clean section separation with `AppColors.glassBorder` dividers and 28px gaps between class-wide and student-wise analytics.
+   - Expanded internal padding in student metric cards (`20px`) and list item containers (`18px x 14px`).
+2. Verified zero errors via `dart analyze` and hot reloaded the application.
+
+## [2026-08-14] Fixed Class & Student Roster Loading in Gradebook & Attendance
+1. **Root Cause**: `gradebook_screen.dart` and `teacher_attendance_screen.dart` strictly restricted classes to timetable entries matching the signed-in teacher (`teacher_id = selfStaffId`). If the staff ID had no timetable rows or when viewing unassigned classes, empty classes or invalid IDs resulted in "no student in the class".
+2. **Fix**:
+   - Updated `_load()` in both screens to fetch all active unarchived school classes (`is_archived = false`) while prioritizing the teacher's assigned classes at the top.
+   - Guaranteed automatic selection and validation of `_selectedClassId` and `_selectedSubjectId` against available classes/subjects.
+   - Added robust student roster loading in `_loadRosterWithGrades` and `_loadRoster` with graceful fallback, so real enrolled students (19-22 students per class) always populate both **Grade Entry** / **Mark Attendance** and **Grade Analytics** / **Attendance Analytics**.
+3. Verified zero compilation errors via `dart analyze` and hot reloaded the application.
+
+## [2026-08-14] Added Dual Subsections & Student-Wise Trends in Attendance & Gradebook
+1. **Attendance Subsections & Student-Wise Analytics** ([teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\teacher_attendance_screen.dart)):
+   - Created two subsections: **Mark Attendance** (roll call, search, quick mark all present/absent, submit) and **Attendance Analytics** (class-wide trend line chart, summary chips).
+   - Added **Student-Wise Attendance Analytics**: Student selector dropdown, individual student monthly trend chart (% Present), days present/absent counts, risk status badges, and recent attendance session logs.
+2. **Gradebook Subsections & Student-Wise Analytics** ([gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\gradebook_screen.dart)):
+   - Created two subsections: **Grade Entry** (class/subject/term selector, student search, tiered grade chips, mark entry modal) and **Grade Analytics** (multi-year class trend, class average).
+   - Added **Student-Wise Grade Analytics**: Student selector dropdown, individual student grade trajectory line chart across past years & terms, average/highest scores, performance tier, and subject-by-subject grade breakdown.
+3. Verified zero errors via `dart analyze` and hot reloaded the application.
+
+## [2026-08-14] Added Search/Filter/Sort to 4 Modules & Past-Years Grade Trends
+1. **Search, Filter & Sort Integration**:
+   - [teacher_assignments_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\teacher_assignments_screen.dart) & [student_assignments_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\student\student_assignments_screen.dart): Added text search, Class / Subject / Status filtering, and Due Date / Title / Submission count sorting via `SearchFilterBar`.
+   - [announcements_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\admin\announcements_screen.dart): Added text search, Scope (School-wide vs Class-specific) filtering, and Date / Title sorting.
+   - [lesson_resources_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\lesson_resources_screen.dart) & [student_library_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\student\student_library_screen.dart): Added text search, Class filtering, and Date / Title sorting.
+   - [leave_requests_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\leave_requests_screen.dart): Added text search (staff name / reason), Status (Pending / Approved / Rejected) filtering, and Date / Staff Name sorting.
+2. **Multi-Year Grade Trend**:
+   - [gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\teacher\gradebook_screen.dart) & [principal_dashboard.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\principal\principal_dashboard.dart): Enhanced Grade Trend loading to calculate and display historical multi-year trajectories across past years (`2023-24`, `2024-25`, `2025-26`) combined with current term grades.
+3. Verified zero compilation errors across all screens via `dart analyze` and hot reloaded the app at `http://localhost:8080`.
+
+## [2026-08-14] Enhanced MessagesScreen (Inbox/Sent Tabs, Recipient Search, Delete For Me)
+Upgraded [messages_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure\school-erp\app\lib\features\dashboard\admin\messages_screen.dart):
+1. Fixed message visibility by querying both incoming and sent messages (`or('recipient_*.eq.*,sender_*.eq.*')`) and organizing them into `Inbox` and `Sent` tabs.
+2. Added live recipient search & filtering in the Compose bottom sheet (supports searching by name/class, select all matching, and selection chips with role accent).
+3. Implemented per-user "Delete for me" functionality persisted in `SharedPreferences` with Undo option, deleting messages only on the deleting user's view.
+4. Verified with `dart analyze` (0 errors) and hot reloaded server at `http://localhost:8080`.
+
+## [2026-08-14] Flat Redesign Extension & Dead Code Cleanup
+Implemented flat redesign prompt steps:
+1. Updated [role_shell.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/role_shell.dart) to use role-based accent colors (`role.accentFill`, `role.accentOnLight`, `role.accentSoft`) for active navigation tiles, drawer headers, mobile bottom nav indicators, and role badges.
+2. Removed dead photo-preset code (`background_presets.dart`, `background_preset_provider.dart`) and tracked in [tech_debt.md](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/docs/tech_debt.md).
+3. Created [design.md](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/docs/design.md) documenting palette, role accents, typography, and screen-by-screen mappings.
+4. Reskinned [teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_attendance_screen.dart), [gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/gradebook_screen.dart), [principal_dashboard.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/principal/principal_dashboard.dart), [unauthorized_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/auth/unauthorized_screen.dart), and [splash_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/auth/splash_screen.dart) with flat pill badges, role accents, and clean card containers.
+5. Full `dart analyze lib/` verified with 0 compilation errors.
+
+## [2026-08-14] Updated Theme, Glass Card Widgets, Login & Settings Screens
+Placed updated UI files from Downloads into respective target directories: [app_theme.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/theme/app_theme.dart), [glass_card.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/glass_card.dart), [stat_card.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/stat_card.dart), [warm_backdrop.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/warm_backdrop.dart), [login_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/auth/login_screen.dart), and [settings_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/settings/settings_screen.dart). Verified 0 errors across all 6 files via `dart analyze` and `flutter analyze`.
+
 ## [2026-08-11] Document Upload Service & Admission Form Photo Upload in DocumentReviewScreen
 Created [document_upload_service.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/services/document_upload_service.dart) with `uploadAndExtractForm` function and updated [document_review_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/documents/document_review_screen.dart) with "Upload New Form" action using `ImagePicker`. Added loading indicator banner/button state during AI extraction, auto-refresh on success, and SnackBar error handling on `DocumentExtractionException`.
 

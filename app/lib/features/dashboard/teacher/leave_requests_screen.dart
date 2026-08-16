@@ -7,12 +7,9 @@ import '../../../core/auth/user_role.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import '../../../shared/widgets/search_filter/search_filter_bar.dart';
+import '../../../shared/widgets/search_filter/utils.dart';
 
-/// Leave requests — role-aware in a single screen rather than two separate ones,
-/// since the underlying data (public.leave_requests) and the RLS shape are the same,
-/// just the allowed ACTIONS differ: any staff member can submit their OWN request
-/// (self_insert_leave_request RLS policy — not role-scoped, just self-scoped), while
-/// only admin/principal can approve/reject (admin_approve_leave_requests policy).
 class LeaveRequestsScreen extends ConsumerStatefulWidget {
   const LeaveRequestsScreen({super.key});
 
@@ -22,6 +19,18 @@ class LeaveRequestsScreen extends ConsumerStatefulWidget {
 
 class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   late Future<_LeaveData> _future;
+
+  // Search, Filter, Sort state
+  String _searchQuery = '';
+  String _selectedStatus = 'all';
+  SortOption _sortOption = const SortOption(value: 'date_desc', label: 'Date: Newest First', icon: Icons.calendar_today);
+
+  static const _sortOptions = [
+    SortOption(value: 'date_desc', label: 'Date: Newest First', icon: Icons.calendar_today),
+    SortOption(value: 'date_asc', label: 'Date: Oldest First', icon: Icons.calendar_today_outlined),
+    SortOption(value: 'name_asc', label: 'Staff Name: A → Z', icon: Icons.sort_by_alpha),
+    SortOption(value: 'name_desc', label: 'Staff Name: Z → A', icon: Icons.sort_by_alpha),
+  ];
 
   @override
   void initState() {
@@ -156,6 +165,46 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
     );
   }
 
+  List<Map<String, dynamic>> _applyFilterAndSort(List<Map<String, dynamic>> source, Map<String, String> nameById) {
+    var list = source.where((r) {
+      final staffName = nameById[r['staff_id']] ?? 'Staff';
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        final reason = (r['reason'] as String? ?? '').toLowerCase();
+        if (!staffName.toLowerCase().contains(q) && !reason.contains(q)) {
+          return false;
+        }
+      }
+      if (_selectedStatus != 'all' && r['status'] != _selectedStatus) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    list.sort((a, b) {
+      final nameA = nameById[a['staff_id']] ?? '';
+      final nameB = nameById[b['staff_id']] ?? '';
+      switch (_sortOption.value) {
+        case 'date_asc':
+          final dA = a['start_date'] as String? ?? '';
+          final dB = b['start_date'] as String? ?? '';
+          return dA.compareTo(dB);
+        case 'date_desc':
+          final dA = a['start_date'] as String? ?? '';
+          final dB = b['start_date'] as String? ?? '';
+          return dB.compareTo(dA);
+        case 'name_asc':
+          return nameA.compareTo(nameB);
+        case 'name_desc':
+          return nameB.compareTo(nameA);
+        default:
+          return 0;
+      }
+    });
+
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = ref.watch(userRoleProvider);
@@ -175,6 +224,20 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
                 return Center(child: Text('Failed to load: ${snapshot.error}'));
               }
               final data = snapshot.data!;
+              final displayedList = _applyFilterAndSort(data.requests, data.nameById);
+
+              final filterGroups = <FilterGroup>[
+                FilterGroup(
+                  title: 'Status',
+                  currentValue: _selectedStatus,
+                  options: const [
+                    FilterOption(value: 'all', label: 'All Requests'),
+                    FilterOption(value: 'pending', label: 'Pending Approval'),
+                    FilterOption(value: 'approved', label: 'Approved'),
+                    FilterOption(value: 'rejected', label: 'Rejected'),
+                  ],
+                ),
+              ];
 
               return CustomScrollView(
                 slivers: [
@@ -188,23 +251,46 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
                           ElevatedButton.icon(
                             onPressed: _showRequestSheet,
                             icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Request leave'),
+                            label: const Text('Request'),
                           ),
                         ],
                       ),
                     ),
                   ),
-                  if (data.requests.isEmpty)
-                    const SliverFillRemaining(
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: SearchFilterBar(
+                        hintText: 'Search by staff name or reason...',
+                        onSearch: (val) => setState(() => _searchQuery = val),
+                        filterGroups: filterGroups,
+                        onFilterChanged: (group) {
+                          setState(() => _selectedStatus = group.currentValue ?? 'all');
+                        },
+                        sorts: _sortOptions,
+                        currentSortValue: _sortOption.value,
+                        onSortSelected: (option) => setState(() => _sortOption = option),
+                      ),
+                    ),
+                  ),
+                  if (displayedList.isEmpty)
+                    SliverFillRemaining(
                       hasScrollBody: false,
-                      child: Center(child: Text('No leave requests yet.')),
+                      child: Center(
+                        child: Text(
+                          _searchQuery.isNotEmpty || _selectedStatus != 'all'
+                              ? 'No matching leave requests found.'
+                              : 'No leave requests yet.',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ),
                     )
                   else
                     SliverPadding(
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          data.requests.map((r) {
+                          displayedList.map((r) {
                             final status = r['status'] as String;
                             final statusColor = switch (status) {
                               'approved' => AppColors.success,

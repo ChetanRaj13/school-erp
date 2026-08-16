@@ -9,12 +9,9 @@ import '../../../core/auth/self_record_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import '../../../shared/widgets/search_filter/search_filter_bar.dart';
+import '../../../shared/widgets/search_filter/utils.dart';
 
-/// Lesson Plan / Resource Sharing — entirely new, no equivalent existed anywhere in
-/// the app before tonight. A teacher shares a file (notes, slides, worksheets) tied to
-/// one of their real classes; that class's students see it. Uses the new
-/// academic.lesson_resources table + 'lesson-resources' storage bucket, both created
-/// live tonight.
 class LessonResourcesScreen extends ConsumerStatefulWidget {
   const LessonResourcesScreen({super.key});
 
@@ -25,6 +22,18 @@ class LessonResourcesScreen extends ConsumerStatefulWidget {
 class _LessonResourcesScreenState extends ConsumerState<LessonResourcesScreen> {
   late Future<_ResourcesData> _future;
   bool _uploading = false;
+
+  // Search, Filter, Sort state
+  String _searchQuery = '';
+  String _selectedClassId = 'all';
+  SortOption _sortOption = const SortOption(value: 'date_desc', label: 'Date: Newest First', icon: Icons.calendar_today);
+
+  static const _sortOptions = [
+    SortOption(value: 'date_desc', label: 'Date: Newest First', icon: Icons.calendar_today),
+    SortOption(value: 'date_asc', label: 'Date: Oldest First', icon: Icons.calendar_today_outlined),
+    SortOption(value: 'title_asc', label: 'Title: A → Z', icon: Icons.sort_by_alpha),
+    SortOption(value: 'title_desc', label: 'Title: Z → A', icon: Icons.sort_by_alpha),
+  ];
 
   @override
   void initState() {
@@ -68,7 +77,12 @@ class _LessonResourcesScreenState extends ConsumerState<LessonResourcesScreen> {
       r['class_name'] = classNameById[r['class_id']] ?? 'Unknown';
     }
 
-    return _ResourcesData(selfStaffId: selfStaffId, teacherClasses: classes, resources: resources);
+    return _ResourcesData(
+      selfStaffId: selfStaffId,
+      teacherClasses: classes,
+      allClasses: List<Map<String, dynamic>>.from(allClasses),
+      resources: resources,
+    );
   }
 
   Future<void> _upload(String classId, String title, String description) async {
@@ -139,14 +153,15 @@ class _LessonResourcesScreenState extends ConsumerState<LessonResourcesScreen> {
                   onChanged: (v) => setModalState(() => selectedClass = v),
                 ),
                 const SizedBox(height: 12),
-                TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title')),
+                TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title / topic (e.g. Chapter 4 Notes)')),
                 const SizedBox(height: 12),
-                TextField(controller: descriptionController, decoration: const InputDecoration(labelText: 'Description'), maxLines: 2),
+                TextField(controller: descriptionController, decoration: const InputDecoration(labelText: 'Description (optional)'), maxLines: 2),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
-                  onPressed: _uploading || titleController.text.trim().isEmpty
+                  onPressed: _uploading
                       ? null
                       : () {
+                          if (titleController.text.trim().isEmpty || selectedClass == null) return;
                           Navigator.of(context).pop();
                           _upload(selectedClass!['id'] as String, titleController.text.trim(), descriptionController.text.trim());
                         },
@@ -159,6 +174,45 @@ class _LessonResourcesScreenState extends ConsumerState<LessonResourcesScreen> {
         ),
       ),
     );
+  }
+
+  List<Map<String, dynamic>> _applyFilterAndSort(List<Map<String, dynamic>> source) {
+    var list = source.where((r) {
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        final title = (r['title'] as String? ?? '').toLowerCase();
+        final desc = (r['description'] as String? ?? '').toLowerCase();
+        final cls = (r['class_name'] as String? ?? '').toLowerCase();
+        if (!title.contains(q) && !desc.contains(q) && !cls.contains(q)) {
+          return false;
+        }
+      }
+      if (_selectedClassId != 'all' && r['class_id'] != _selectedClassId) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    list.sort((a, b) {
+      switch (_sortOption.value) {
+        case 'date_asc':
+          final dA = a['created_at'] as String? ?? '';
+          final dB = b['created_at'] as String? ?? '';
+          return dA.compareTo(dB);
+        case 'date_desc':
+          final dA = a['created_at'] as String? ?? '';
+          final dB = b['created_at'] as String? ?? '';
+          return dB.compareTo(dA);
+        case 'title_asc':
+          return (a['title'] as String? ?? '').compareTo(b['title'] as String? ?? '');
+        case 'title_desc':
+          return (b['title'] as String? ?? '').compareTo(a['title'] as String? ?? '');
+        default:
+          return 0;
+      }
+    });
+
+    return list;
   }
 
   @override
@@ -177,7 +231,24 @@ class _LessonResourcesScreenState extends ConsumerState<LessonResourcesScreen> {
                 return Center(child: Text('Failed to load: ${snapshot.error}'));
               }
               final data = snapshot.data!;
-              final canUpload = data.teacherClasses.isNotEmpty;
+              if (data.selfStaffId == null) {
+                return const Center(child: Text("Your account isn't linked to a staff record yet."));
+              }
+
+              final displayedList = _applyFilterAndSort(data.resources);
+
+              // Gather unique classes
+              final filterClasses = data.allClasses.isNotEmpty ? data.allClasses : data.teacherClasses;
+              final filterGroups = <FilterGroup>[
+                FilterGroup(
+                  title: 'Class',
+                  currentValue: _selectedClassId,
+                  options: [
+                    const FilterOption(value: 'all', label: 'All Classes'),
+                    ...filterClasses.map((c) => FilterOption(value: c['id'] as String, label: 'Class ${c['name']}')),
+                  ],
+                ),
+              ];
 
               return CustomScrollView(
                 slivers: [
@@ -188,45 +259,76 @@ class _LessonResourcesScreenState extends ConsumerState<LessonResourcesScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text('Lesson Resources', style: Theme.of(context).textTheme.headlineMedium),
-                          if (canUpload)
+                          if (data.teacherClasses.isNotEmpty)
                             ElevatedButton.icon(
-                              onPressed: () => _showUploadSheet(data.teacherClasses),
-                              icon: const Icon(Icons.add, size: 18),
-                              label: const Text('Share'),
+                              onPressed: _uploading ? null : () => _showUploadSheet(data.teacherClasses),
+                              icon: _uploading
+                                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.upload_file_outlined, size: 18),
+                              label: Text(_uploading ? 'Uploading...' : 'Share'),
                             ),
                         ],
                       ),
                     ),
                   ),
-                  if (data.resources.isEmpty)
-                    const SliverFillRemaining(
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: SearchFilterBar(
+                        hintText: 'Search resources...',
+                        onSearch: (val) => setState(() => _searchQuery = val),
+                        filterGroups: filterGroups,
+                        onFilterChanged: (group) {
+                          setState(() => _selectedClassId = group.currentValue ?? 'all');
+                        },
+                        sorts: _sortOptions,
+                        currentSortValue: _sortOption.value,
+                        onSortSelected: (option) => setState(() => _sortOption = option),
+                      ),
+                    ),
+                  ),
+                  if (displayedList.isEmpty)
+                    SliverFillRemaining(
                       hasScrollBody: false,
-                      child: Center(child: Text('No resources shared yet.')),
+                      child: Center(
+                        child: Text(
+                          _searchQuery.isNotEmpty || _selectedClassId != 'all'
+                              ? 'No matching resources found.'
+                              : 'No resources shared yet.',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ),
                     )
                   else
                     SliverPadding(
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          data.resources.map((r) => Padding(
+                          displayedList.map((r) => Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: GlassCard(
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.folder_open_outlined, color: AppColors.primary),
+                                      const Icon(Icons.menu_book_outlined, color: AppColors.primary),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(r['title'] as String, style: Theme.of(context).textTheme.titleMedium),
-                                            Text('${r['class_name']}${(r['description'] as String?)?.isNotEmpty == true ? ' · ${r['description']}' : ''}', style: Theme.of(context).textTheme.bodyMedium),
+                                            const SizedBox(height: 4),
+                                            GlassChip(label: 'Class ${r['class_name']}', color: AppColors.primary),
+                                            if ((r['description'] as String?)?.isNotEmpty == true) ...[
+                                              const SizedBox(height: 6),
+                                              Text(r['description'] as String, style: Theme.of(context).textTheme.bodyMedium),
+                                            ],
                                           ],
                                         ),
                                       ),
                                       if (r['file_url'] != null)
                                         IconButton(
                                           icon: const Icon(Icons.open_in_new, color: AppColors.primary),
+                                          tooltip: 'Open resource',
                                           onPressed: () => launchUrl(Uri.parse(r['file_url'] as String), webOnlyWindowName: '_blank'),
                                         ),
                                     ],
@@ -248,8 +350,15 @@ class _LessonResourcesScreenState extends ConsumerState<LessonResourcesScreen> {
 }
 
 class _ResourcesData {
-  _ResourcesData({required this.selfStaffId, required this.teacherClasses, required this.resources});
+  _ResourcesData({
+    required this.selfStaffId,
+    required this.teacherClasses,
+    required this.allClasses,
+    required this.resources,
+  });
+
   final String? selfStaffId;
   final List<Map<String, dynamic>> teacherClasses;
+  final List<Map<String, dynamic>> allClasses;
   final List<Map<String, dynamic>> resources;
 }

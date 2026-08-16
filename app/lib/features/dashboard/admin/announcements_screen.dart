@@ -7,15 +7,9 @@ import '../../../core/auth/user_role.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import '../../../shared/widgets/search_filter/search_filter_bar.dart';
+import '../../../shared/widgets/search_filter/utils.dart';
 
-/// Shared announcements screen — same screen for every role. Staff roles
-/// (teacher/admin/principal) see a "New announcement" button; students/parents
-/// get a read-only view.
-///
-/// Assembles announcements from academic.announcements, grouped or filtered by
-/// the viewer's role. Evolving from 000 — teachers can now target announcements
-/// to a specific class (the class_id column in the DB was already there, just
-/// unused). Admin/principal still default to school-wide.
 class AnnouncementsScreen extends ConsumerStatefulWidget {
   const AnnouncementsScreen({super.key});
 
@@ -25,6 +19,18 @@ class AnnouncementsScreen extends ConsumerStatefulWidget {
 
 class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
   late Future<_AnnouncementData> _future;
+
+  // Search, Filter, Sort state
+  String _searchQuery = '';
+  String _selectedScope = 'all';
+  SortOption _sortOption = const SortOption(value: 'date_desc', label: 'Date: Newest First', icon: Icons.calendar_today);
+
+  static const _sortOptions = [
+    SortOption(value: 'date_desc', label: 'Date: Newest First', icon: Icons.calendar_today),
+    SortOption(value: 'date_asc', label: 'Date: Oldest First', icon: Icons.calendar_today_outlined),
+    SortOption(value: 'title_asc', label: 'Title: A → Z', icon: Icons.sort_by_alpha),
+    SortOption(value: 'title_desc', label: 'Title: Z → A', icon: Icons.sort_by_alpha),
+  ];
 
   @override
   void initState() {
@@ -36,7 +42,6 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     final client = ref.read(supabaseClientProvider);
     final selfStaffId = await ref.read(selfStaffIdProvider.future);
 
-    // Load announcements.
     final rows = await client
         .schema('academic')
         .from('announcements')
@@ -44,7 +49,6 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
         .order('created_at', ascending: false);
     final announcements = List<Map<String, dynamic>>.from(rows as List);
 
-    // Load classes for the picker.
     final classRows = await client
         .schema('academic')
         .from('classes')
@@ -54,7 +58,6 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     final allClasses = List<Map<String, dynamic>>.from(classRows as List);
     final classNameById = {for (final c in allClasses) c['id'] as String: c['name'] as String};
 
-    // For teacher: find which classes they teach via timetable or class_teacher_id.
     Set<String> taughtClassIds = {};
     if (selfStaffId != null) {
       final tts = await client
@@ -119,7 +122,6 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     final bodyController = TextEditingController();
     Map<String, dynamic>? selectedClass;
 
-    // Filter available classes to taught classes if available, otherwise show all classes
     final availableClasses = taughtClassIds.isNotEmpty
         ? allClasses.where((c) => taughtClassIds.contains(c['id'])).toList()
         : allClasses;
@@ -143,31 +145,44 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
               children: [
                 Text('New Announcement', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 16),
-                TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title')),
-                const SizedBox(height: 12),
-                TextField(controller: bodyController, decoration: const InputDecoration(labelText: 'Message'), maxLines: 4),
-                const SizedBox(height: 12),
-                // Target Class picker for Teachers / Staff
                 DropdownButtonFormField<Map<String, dynamic>?>(
-                  decoration: const InputDecoration(labelText: 'Target Audience'),
-                  value: selectedClass,
+                  initialValue: selectedClass,
+                  decoration: const InputDecoration(
+                    labelText: 'Target audience',
+                    helperText: 'Leave as "School-wide" to broadcast to everyone',
+                  ),
                   items: [
-                    const DropdownMenuItem(value: null, child: Text('School-wide (all classes)')),
-                    for (final c in availableClasses)
-                      DropdownMenuItem(value: c, child: Text('${c['name']}${taughtClassIds.contains(c['id']) ? ' (My Class)' : ''}')),
+                    const DropdownMenuItem<Map<String, dynamic>?>(
+                      value: null,
+                      child: Text('School-wide (all classes)'),
+                    ),
+                    ...availableClasses.map(
+                      (c) => DropdownMenuItem<Map<String, dynamic>?>(
+                        value: c,
+                        child: Text('Class ${c['name']}'),
+                      ),
+                    ),
                   ],
                   onChanged: (v) => setModalState(() => selectedClass = v),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: 'Title'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: bodyController,
+                  decoration: const InputDecoration(labelText: 'Body / details'),
+                  maxLines: 3,
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () {
-                    if (titleController.text.trim().isEmpty) return;
+                    final title = titleController.text.trim();
+                    if (title.isEmpty) return;
                     Navigator.of(context).pop();
-                    _post(
-                      titleController.text.trim(),
-                      bodyController.text.trim(),
-                      selectedClass?['id'] as String?,
-                    );
+                    _post(title, bodyController.text.trim(), selectedClass?['id'] as String?);
                   },
                   child: const Text('Post announcement'),
                 ),
@@ -179,10 +194,56 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     );
   }
 
+  List<Map<String, dynamic>> _applyFilterAndSort(List<Map<String, dynamic>> source, Map<String, String> classNameById) {
+    var list = source.where((a) {
+      final classId = a['class_id'] as String?;
+      final className = classId != null ? (classNameById[classId] ?? '') : 'School-wide';
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        final title = (a['title'] as String? ?? '').toLowerCase();
+        final body = (a['body'] as String? ?? '').toLowerCase();
+        if (!title.contains(q) && !body.contains(q) && !className.toLowerCase().contains(q)) {
+          return false;
+        }
+      }
+      if (_selectedScope == 'school_wide' && classId != null) {
+        return false;
+      }
+      if (_selectedScope == 'class_specific' && classId == null) {
+        return false;
+      }
+      if (_selectedScope != 'all' && _selectedScope != 'school_wide' && _selectedScope != 'class_specific') {
+        if (classId != _selectedScope) return false;
+      }
+      return true;
+    }).toList();
+
+    list.sort((a, b) {
+      switch (_sortOption.value) {
+        case 'date_asc':
+          final dA = a['created_at'] as String? ?? '';
+          final dB = b['created_at'] as String? ?? '';
+          return dA.compareTo(dB);
+        case 'date_desc':
+          final dA = a['created_at'] as String? ?? '';
+          final dB = b['created_at'] as String? ?? '';
+          return dB.compareTo(dA);
+        case 'title_asc':
+          return (a['title'] as String? ?? '').compareTo(b['title'] as String? ?? '');
+        case 'title_desc':
+          return (b['title'] as String? ?? '').compareTo(a['title'] as String? ?? '');
+        default:
+          return 0;
+      }
+    });
+
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = ref.watch(userRoleProvider);
-    final canPost = role == UserRole.teacher || role == UserRole.admin || role == UserRole.principal;
+    final canPost = role == UserRole.admin || role == UserRole.principal || role == UserRole.teacher;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -198,6 +259,20 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                 return Center(child: Text('Failed to load: ${snapshot.error}'));
               }
               final data = snapshot.data!;
+              final displayedList = _applyFilterAndSort(data.announcements, data.classNameById);
+
+              final filterGroups = <FilterGroup>[
+                FilterGroup(
+                  title: 'Scope',
+                  currentValue: _selectedScope,
+                  options: [
+                    const FilterOption(value: 'all', label: 'All Announcements'),
+                    const FilterOption(value: 'school_wide', label: 'School-wide only'),
+                    const FilterOption(value: 'class_specific', label: 'Class-specific only'),
+                    ...data.allClasses.map((c) => FilterOption(value: c['id'] as String, label: 'Class ${c['name']}')),
+                  ],
+                ),
+              ];
 
               return CustomScrollView(
                 slivers: [
@@ -218,17 +293,40 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                       ),
                     ),
                   ),
-                  if (data.announcements.isEmpty)
-                    const SliverFillRemaining(
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: SearchFilterBar(
+                        hintText: 'Search announcements...',
+                        onSearch: (val) => setState(() => _searchQuery = val),
+                        filterGroups: filterGroups,
+                        onFilterChanged: (group) {
+                          setState(() => _selectedScope = group.currentValue ?? 'all');
+                        },
+                        sorts: _sortOptions,
+                        currentSortValue: _sortOption.value,
+                        onSortSelected: (option) => setState(() => _sortOption = option),
+                      ),
+                    ),
+                  ),
+                  if (displayedList.isEmpty)
+                    SliverFillRemaining(
                       hasScrollBody: false,
-                      child: Center(child: Text('No announcements yet.')),
+                      child: Center(
+                        child: Text(
+                          _searchQuery.isNotEmpty || _selectedScope != 'all'
+                              ? 'No matching announcements found.'
+                              : 'No announcements yet.',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ),
                     )
                   else
                     SliverPadding(
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          data.announcements.map((a) {
+                          displayedList.map((a) {
                             final classId = a['class_id'] as String?;
                             final scopeLabel = classId != null
                                 ? (data.classNameById[classId] ?? 'A class')
@@ -248,8 +346,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    // Scope badge.
+                                    const SizedBox(height: 6),
                                     GlassChip(
                                       label: scopeLabel,
                                       color: classId != null ? AppColors.primary : AppColors.textSecondary,

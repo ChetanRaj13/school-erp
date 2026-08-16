@@ -8,8 +8,6 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
-/// Parent Schedule — never existed before. Same real scheduling.timetable data as
-/// Student's own schedule screen, just viewed by the parent for their selected child.
 class ParentScheduleScreen extends ConsumerStatefulWidget {
   const ParentScheduleScreen({super.key});
 
@@ -19,6 +17,8 @@ class ParentScheduleScreen extends ConsumerStatefulWidget {
 
 class _ParentScheduleScreenState extends ConsumerState<ParentScheduleScreen> {
   String? _selectedStudentId;
+  static const _parentAccent = Color(0xFFFF6B9D);
+  static const _parentAccentSoft = Color(0xFFFFE8F0);
 
   @override
   Widget build(BuildContext context) {
@@ -30,79 +30,174 @@ class _ParentScheduleScreenState extends ConsumerState<ParentScheduleScreen> {
       body: WarmBackdrop(
         child: SafeArea(
           child: childrenAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+            loading: () => const Center(child: CircularProgressIndicator(color: _parentAccent)),
             error: (e, _) => Center(child: Text('Error: $e')),
             data: (children) {
               if (children.isEmpty) {
                 return const Center(child: Text('No children linked to your account yet.'));
               }
-              final selected = children.firstWhere((c) => c.studentId == _selectedStudentId, orElse: () => children.first);
+              final selected = children.firstWhere(
+                (c) => c.studentId == _selectedStudentId,
+                orElse: () => children.first,
+              );
 
-              return FutureBuilder<_ScheduleData>(
-                future: _load(client, selected.studentId),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                  }
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Failed to load: ${snapshot.error}'));
-                  }
-                  final data = snapshot.data!;
-                  if (data.rows.isEmpty) {
-                    return Center(child: Text('No timetable set up yet for ${selected.fullName}.'));
-                  }
-
-                  final days = ['mon', 'tue', 'wed', 'thu', 'fri'];
-                  final dayLabels = {'mon': 'Mon', 'tue': 'Tue', 'wed': 'Wed', 'thu': 'Thu', 'fri': 'Fri'};
-                  final periods = data.rows.map((r) => r['period_number'] as int).toSet().toList()..sort();
-
-                  return CustomScrollView(
-                    slivers: [
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-                        sliver: SliverToBoxAdapter(
-                          child: Text('Timetable — ${selected.fullName}', style: Theme.of(context).textTheme.headlineMedium),
-                        ),
-                      ),
-                      SliverPadding(
-                        padding: const EdgeInsets.all(20),
-                        sliver: SliverList(
-                          delegate: SliverChildListDelegate(
-                            periods.map((period) {
-                              final periodRows = data.rows.where((r) => r['period_number'] == period).toList();
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: GlassCard(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Period $period', style: Theme.of(context).textTheme.titleMedium),
-                                      const SizedBox(height: 8),
-                                      ...days.map((day) {
-                                        final match = periodRows.where((r) => r['day'] == day).toList();
-                                        if (match.isEmpty) return const SizedBox.shrink();
-                                        final row = match.first;
-                                        return Padding(
-                                          padding: const EdgeInsets.only(bottom: 4),
-                                          child: Row(
-                                            children: [
-                                              SizedBox(width: 40, child: Text(dayLabels[day]!, style: const TextStyle(color: AppColors.textSecondary))),
-                                              Expanded(child: Text('${row['subject_name']} · ${row['teacher_name']}')),
-                                            ],
-                                          ),
-                                        );
-                                      }),
-                                    ],
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Text('Timetable & Schedule', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  ),
+                  if (children.length > 1)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                      child: SizedBox(
+                        height: 42,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: children.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
+                            final c = children[i];
+                            final isSelected = c.studentId == selected.studentId;
+                            return InkWell(
+                              onTap: () => setState(() => _selectedStudentId = c.studentId),
+                              borderRadius: BorderRadius.circular(AppRadii.pill),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? _parentAccent : AppColors.glassFill,
+                                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                                  border: Border.all(
+                                    color: isSelected ? _parentAccent : AppColors.glassBorder,
+                                    width: 1.5,
                                   ),
                                 ),
-                              );
-                            }).toList(),
-                          ),
+                                child: Text(
+                                  c.fullName,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
-                    ],
-                  );
-                },
+                    ),
+                  Expanded(
+                    child: FutureBuilder<_ScheduleData>(
+                      key: ValueKey('schedule-${selected.studentId}'),
+                      future: _load(client, selected.studentId),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          return const Center(child: CircularProgressIndicator(color: _parentAccent));
+                        }
+                        if (snapshot.hasError) {
+                          return Center(child: Text('Failed to load: ${snapshot.error}'));
+                        }
+                        final data = snapshot.data!;
+                        if (data.rows.isEmpty) {
+                          return Center(child: Text('No timetable set up yet for ${selected.fullName}.'));
+                        }
+
+                        final days = ['mon', 'tue', 'wed', 'thu', 'fri'];
+                        final dayLabels = {'mon': 'Mon', 'tue': 'Tue', 'wed': 'Wed', 'thu': 'Thu', 'fri': 'Fri'};
+                        final periods = data.rows.map((r) => r['period_number'] as int).toSet().toList()..sort();
+
+                        return ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                          itemCount: periods.length,
+                          itemBuilder: (context, i) {
+                            final period = periods[i];
+                            final periodRows = data.rows.where((r) => r['period_number'] == period).toList();
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: GlassCard(
+                                padding: const EdgeInsets.all(18),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: _parentAccentSoft,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            'Period $period',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 13,
+                                              color: _parentAccent,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    ...days.map((day) {
+                                      final match = periodRows.where((r) => r['day'] == day).toList();
+                                      if (match.isEmpty) return const SizedBox.shrink();
+                                      final row = match.first;
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.backgroundAlt,
+                                            borderRadius: BorderRadius.circular(AppRadii.input),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 44,
+                                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                                alignment: Alignment.center,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  dayLabels[day]!,
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: AppColors.textPrimary,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Text(
+                                                  row['subject_name'] as String,
+                                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                                ),
+                                              ),
+                                              Text(
+                                                row['teacher_name'] as String,
+                                                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
               );
             },
           ),

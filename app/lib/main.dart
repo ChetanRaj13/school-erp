@@ -36,29 +36,3 @@ class SchoolErpApp extends ConsumerWidget {
     );
   }
 }
-
-class _MissingConfigApp extends StatelessWidget {
-  const _MissingConfigApp();
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Text(
-              'Missing Supabase config.\n\n'
-              'Run with:\n'
-              'flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...\n\n'
-              'See lib/core/config/env.dart for details.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

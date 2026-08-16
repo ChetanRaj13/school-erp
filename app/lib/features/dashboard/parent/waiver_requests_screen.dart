@@ -245,7 +245,7 @@ class _WaiverRequestsScreenState extends ConsumerState<WaiverRequestsScreen> {
           .from('invoices')
           .select('id, amount_due, amount_paid')
           .eq('id', invoiceId)
-          .maybeSingle() as Map<String, dynamic>?;
+          .maybeSingle();
     } catch (_) {
       return null;
     }

@@ -8,14 +8,9 @@ import '../../../core/auth/self_record_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import '../../../shared/widgets/search_filter/search_filter_bar.dart';
+import '../../../shared/widgets/search_filter/utils.dart';
 
-/// UPDATED: real file upload via file_picker + Supabase Storage's 'assignment-
-/// submissions' bucket (created live tonight), replacing the earlier link-paste-only
-/// version. academic.submissions.file_url now stores a real signed URL to an actual
-/// uploaded file, not a manually typed link.
-///
-/// NEW DEPENDENCY: file_picker — not previously in this project's pubspec.yaml. See
-/// the accompanying README for the exact line to add before this compiles.
 class StudentAssignmentsScreen extends ConsumerStatefulWidget {
   const StudentAssignmentsScreen({super.key});
 
@@ -27,6 +22,19 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
   late Future<_StudentAssignmentData> _future;
   bool _uploading = false;
 
+  // Search, Filter, Sort state
+  String _searchQuery = '';
+  String _selectedSubject = 'all';
+  String _selectedStatus = 'all';
+  SortOption _sortOption = const SortOption(value: 'due_date_asc', label: 'Due: Earliest First', icon: Icons.calendar_today);
+
+  static const _sortOptions = [
+    SortOption(value: 'due_date_asc', label: 'Due: Earliest First', icon: Icons.calendar_today),
+    SortOption(value: 'due_date_desc', label: 'Due: Latest First', icon: Icons.calendar_today_outlined),
+    SortOption(value: 'title_asc', label: 'Title: A → Z', icon: Icons.sort_by_alpha),
+    SortOption(value: 'title_desc', label: 'Title: Z → A', icon: Icons.sort_by_alpha),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -37,12 +45,9 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
     final client = ref.read(supabaseClientProvider);
     final selfStudentId = await ref.read(selfStudentIdProvider.future);
     if (selfStudentId == null) {
-      return _StudentAssignmentData(selfStudentId: null, assignments: [], submissionByAssignmentId: {});
+      return _StudentAssignmentData(selfStudentId: null, assignments: [], submissionByAssignmentId: {}, subjectList: []);
     }
 
-    // Uses .limit(1) instead of .maybeSingle() — a student can have more than one
-    // class_roster row in the current seed data (a real data question, not something
-    // this screen should crash over). Deterministically picks the earliest enrollment.
     final rosterRows = await client
         .schema('academic')
         .from('class_roster')
@@ -52,7 +57,7 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
         .limit(1);
 
     if ((rosterRows as List).isEmpty) {
-      return _StudentAssignmentData(selfStudentId: selfStudentId, assignments: [], submissionByAssignmentId: {});
+      return _StudentAssignmentData(selfStudentId: selfStudentId, assignments: [], submissionByAssignmentId: {}, subjectList: []);
     }
     final classId = rosterRows[0]['class_id'];
 
@@ -78,13 +83,16 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
             .inFilter('assignment_id', assignmentIds);
     final submissionByAssignmentId = {for (final s in submissions) s['assignment_id'] as String: s};
 
+    final subjectNames = subjectNameById.values.toSet().toList()..sort();
+
     return _StudentAssignmentData(
       selfStudentId: selfStudentId,
       assignments: List<Map<String, dynamic>>.from(assignments).map((a) {
-        a['subject_name'] = subjectNameById[a['subject_id']];
+        a['subject_name'] = subjectNameById[a['subject_id']] ?? 'General';
         return a;
       }).toList(),
       submissionByAssignmentId: submissionByAssignmentId,
+      subjectList: subjectNames,
     );
   }
 
@@ -107,7 +115,7 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
             file.bytes!,
             fileOptions: const FileOptions(upsert: true),
           );
-      final signedUrl = await client.storage.from('assignment-submissions').createSignedUrl(path, 60 * 60 * 24 * 30); // 30 days
+      final signedUrl = await client.storage.from('assignment-submissions').createSignedUrl(path, 60 * 60 * 24 * 30);
 
       await client.schema('academic').from('submissions').insert({
         'assignment_id': assignmentId,
@@ -130,6 +138,55 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: isError ? AppColors.error : AppColors.success));
   }
 
+  List<Map<String, dynamic>> _applyFilterAndSort(List<Map<String, dynamic>> source, Map<String, dynamic> submissionByAssignmentId) {
+    var list = source.where((a) {
+      final sub = submissionByAssignmentId[a['id']];
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        final title = (a['title'] as String? ?? '').toLowerCase();
+        final desc = (a['description'] as String? ?? '').toLowerCase();
+        final subj = (a['subject_name'] as String? ?? '').toLowerCase();
+        if (!title.contains(q) && !desc.contains(q) && !subj.contains(q)) {
+          return false;
+        }
+      }
+      if (_selectedSubject != 'all' && a['subject_name'] != _selectedSubject) {
+        return false;
+      }
+      if (_selectedStatus == 'submitted' && sub == null) {
+        return false;
+      }
+      if (_selectedStatus == 'pending' && sub != null) {
+        return false;
+      }
+      if (_selectedStatus == 'graded' && (sub == null || sub['grade'] == null)) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    list.sort((a, b) {
+      switch (_sortOption.value) {
+        case 'due_date_asc':
+          final dA = a['due_date'] as String? ?? '';
+          final dB = b['due_date'] as String? ?? '';
+          return dA.compareTo(dB);
+        case 'due_date_desc':
+          final dA = a['due_date'] as String? ?? '';
+          final dB = b['due_date'] as String? ?? '';
+          return dB.compareTo(dA);
+        case 'title_asc':
+          return (a['title'] as String? ?? '').compareTo(b['title'] as String? ?? '');
+        case 'title_desc':
+          return (b['title'] as String? ?? '').compareTo(a['title'] as String? ?? '');
+        default:
+          return 0;
+      }
+    });
+
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -150,20 +207,75 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
                 return const Center(child: Text("Your account isn't linked to a student record yet."));
               }
 
+              final displayedList = _applyFilterAndSort(data.assignments, data.submissionByAssignmentId);
+
+              final filterGroups = <FilterGroup>[
+                FilterGroup(
+                  title: 'Subject',
+                  currentValue: _selectedSubject,
+                  options: [
+                    const FilterOption(value: 'all', label: 'All Subjects'),
+                    ...data.subjectList.map((s) => FilterOption(value: s, label: s)),
+                  ],
+                ),
+                FilterGroup(
+                  title: 'Status',
+                  currentValue: _selectedStatus,
+                  options: const [
+                    FilterOption(value: 'all', label: 'All Statuses'),
+                    FilterOption(value: 'pending', label: 'Pending Upload'),
+                    FilterOption(value: 'submitted', label: 'Submitted'),
+                    FilterOption(value: 'graded', label: 'Graded'),
+                  ],
+                ),
+              ];
+
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
                     sliver: SliverToBoxAdapter(child: Text('Assignments', style: Theme.of(context).textTheme.headlineMedium)),
                   ),
-                  if (data.assignments.isEmpty)
-                    const SliverFillRemaining(hasScrollBody: false, child: Center(child: Text('No assignments for your class yet.')))
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: SearchFilterBar(
+                        hintText: 'Search assignments or subjects...',
+                        onSearch: (val) => setState(() => _searchQuery = val),
+                        filterGroups: filterGroups,
+                        onFilterChanged: (group) {
+                          setState(() {
+                            if (group.title == 'Subject') {
+                              _selectedSubject = group.currentValue ?? 'all';
+                            } else if (group.title == 'Status') {
+                              _selectedStatus = group.currentValue ?? 'all';
+                            }
+                          });
+                        },
+                        sorts: _sortOptions,
+                        currentSortValue: _sortOption.value,
+                        onSortSelected: (option) => setState(() => _sortOption = option),
+                      ),
+                    ),
+                  ),
+                  if (displayedList.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Text(
+                          _searchQuery.isNotEmpty || _selectedSubject != 'all' || _selectedStatus != 'all'
+                              ? 'No matching assignments found.'
+                              : 'No assignments for your class yet.',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ),
+                    )
                   else
                     SliverPadding(
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          data.assignments.map((a) {
+                          displayedList.map((a) {
                             final submission = data.submissionByAssignmentId[a['id']];
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -172,7 +284,18 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(a['title'] as String, style: Theme.of(context).textTheme.titleMedium),
-                                    Text('${a['subject_name'] ?? 'Unknown'} · Due ${a['due_date']}', style: Theme.of(context).textTheme.bodyMedium),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        GlassChip(label: a['subject_name'] as String, color: AppColors.primary),
+                                        const SizedBox(width: 8),
+                                        Text('Due ${a['due_date']}', style: Theme.of(context).textTheme.bodyMedium),
+                                      ],
+                                    ),
+                                    if ((a['description'] as String?)?.isNotEmpty == true) ...[
+                                      const SizedBox(height: 6),
+                                      Text(a['description'] as String, style: Theme.of(context).textTheme.bodyMedium),
+                                    ],
                                     const SizedBox(height: 10),
                                     if (submission == null)
                                       ElevatedButton.icon(
@@ -205,8 +328,14 @@ class _StudentAssignmentsScreenState extends ConsumerState<StudentAssignmentsScr
 }
 
 class _StudentAssignmentData {
-  _StudentAssignmentData({required this.selfStudentId, required this.assignments, required this.submissionByAssignmentId});
+  _StudentAssignmentData({
+    required this.selfStudentId,
+    required this.assignments,
+    required this.submissionByAssignmentId,
+    required this.subjectList,
+  });
   final String? selfStudentId;
   final List<Map<String, dynamic>> assignments;
   final Map<String, dynamic> submissionByAssignmentId;
+  final List<String> subjectList;
 }

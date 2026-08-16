@@ -7,10 +7,9 @@ import '../../../core/auth/self_record_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
+import '../../../shared/widgets/search_filter/search_filter_bar.dart';
+import '../../../shared/widgets/search_filter/utils.dart';
 
-/// UPDATED: submission list now shows an "Open file" action when a submission has a
-/// real file_url (from the new file-upload flow), in addition to the existing Grade
-/// action. Grading logic itself UNCHANGED.
 class TeacherAssignmentsScreen extends ConsumerStatefulWidget {
   const TeacherAssignmentsScreen({super.key});
 
@@ -20,6 +19,20 @@ class TeacherAssignmentsScreen extends ConsumerStatefulWidget {
 
 class _TeacherAssignmentsScreenState extends ConsumerState<TeacherAssignmentsScreen> {
   late Future<_TeacherAssignmentData> _future;
+
+  // Search, Filter, Sort state
+  String _searchQuery = '';
+  String _selectedClassId = 'all';
+  String _selectedSubjectId = 'all';
+  SortOption _sortOption = const SortOption(value: 'due_date_desc', label: 'Due: Newest First', icon: Icons.calendar_today);
+
+  static const _sortOptions = [
+    SortOption(value: 'due_date_desc', label: 'Due: Newest First', icon: Icons.calendar_today),
+    SortOption(value: 'due_date_asc', label: 'Due: Oldest First', icon: Icons.calendar_today_outlined),
+    SortOption(value: 'title_asc', label: 'Title: A → Z', icon: Icons.sort_by_alpha),
+    SortOption(value: 'title_desc', label: 'Title: Z → A', icon: Icons.sort_by_alpha),
+    SortOption(value: 'submissions_desc', label: 'Most Submissions', icon: Icons.assignment_turned_in),
+  ];
 
   @override
   void initState() {
@@ -53,16 +66,17 @@ class _TeacherAssignmentsScreenState extends ConsumerState<TeacherAssignmentsScr
         .order('name');
     final subjectsRaw = await client.schema('academic').from('subjects').select('id, name');
 
-    // Deduplicate subjects by name — the subjects table has one row per
-    // (subject, qualified-teacher) pair, so the same subject name appears
-    // multiple times. Keep only the first row per name for the dropdown.
     final seenNames = <String>{};
     final subjects = (subjectsRaw as List).where((s) => seenNames.add(s['name'] as String)).toList();
+    final subjectNameById = {for (final s in subjects) s['id'] as String: s['name'] as String};
+    final classNameById = {for (final c in classes as List) c['id'] as String: c['name'] as String};
 
     return _TeacherAssignmentData(
       selfStaffId: selfStaffId,
       assignments: List<Map<String, dynamic>>.from(assignments).map((a) {
         a['submission_count'] = submissionCounts[a['id']] ?? 0;
+        a['subject_name'] = subjectNameById[a['subject_id']] ?? 'General';
+        a['class_name'] = classNameById[a['class_id']] ?? 'Class';
         return a;
       }).toList(),
       classes: List<Map<String, dynamic>>.from(classes as List),
@@ -166,21 +180,17 @@ class _TeacherAssignmentsScreenState extends ConsumerState<TeacherAssignmentsScr
           TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () async {
-              // Save first, then pop — order matters.
               final client = ref.read(supabaseClientProvider);
               try {
-                final result = await client.schema('academic').from('submissions').update({
+                await client.schema('academic').from('submissions').update({
                   'grade': gradeController.text.trim(),
                   'feedback': feedbackController.text.trim(),
                   'status': 'graded',
                 }).eq('id', submissionId);
-                debugPrint('[GradeDialog] update result: $result');
                 if (!mounted) return;
-                // ignore: use_build_context_synchronously
-                Navigator.of(context).pop(); // dialog's own context, not State's
+                Navigator.of(context).pop();
                 _refresh('Grade saved.');
               } catch (e) {
-                debugPrint('[GradeDialog] update FAILED: $e');
                 _showError(e);
               }
             },
@@ -260,6 +270,51 @@ class _TeacherAssignmentsScreenState extends ConsumerState<TeacherAssignmentsScr
     );
   }
 
+  List<Map<String, dynamic>> _applyFilterAndSort(List<Map<String, dynamic>> source) {
+    var list = source.where((a) {
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        final title = (a['title'] as String? ?? '').toLowerCase();
+        final desc = (a['description'] as String? ?? '').toLowerCase();
+        final subj = (a['subject_name'] as String? ?? '').toLowerCase();
+        final cls = (a['class_name'] as String? ?? '').toLowerCase();
+        if (!title.contains(q) && !desc.contains(q) && !subj.contains(q) && !cls.contains(q)) {
+          return false;
+        }
+      }
+      if (_selectedClassId != 'all' && a['class_id'] != _selectedClassId) {
+        return false;
+      }
+      if (_selectedSubjectId != 'all' && a['subject_id'] != _selectedSubjectId) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    list.sort((a, b) {
+      switch (_sortOption.value) {
+        case 'due_date_asc':
+          final dA = a['due_date'] as String? ?? '';
+          final dB = b['due_date'] as String? ?? '';
+          return dA.compareTo(dB);
+        case 'due_date_desc':
+          final dA = a['due_date'] as String? ?? '';
+          final dB = b['due_date'] as String? ?? '';
+          return dB.compareTo(dA);
+        case 'title_asc':
+          return (a['title'] as String? ?? '').compareTo(b['title'] as String? ?? '');
+        case 'title_desc':
+          return (b['title'] as String? ?? '').compareTo(a['title'] as String? ?? '');
+        case 'submissions_desc':
+          return ((b['submission_count'] as num?) ?? 0).compareTo((a['submission_count'] as num?) ?? 0);
+        default:
+          return 0;
+      }
+    });
+
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -280,6 +335,27 @@ class _TeacherAssignmentsScreenState extends ConsumerState<TeacherAssignmentsScr
                 return const Center(child: Text("Your account isn't linked to a staff record yet."));
               }
 
+              final displayedList = _applyFilterAndSort(data.assignments);
+
+              final filterGroups = <FilterGroup>[
+                FilterGroup(
+                  title: 'Class',
+                  currentValue: _selectedClassId,
+                  options: [
+                    const FilterOption(value: 'all', label: 'All Classes'),
+                    ...data.classes.map((c) => FilterOption(value: c['id'] as String, label: c['name'] as String)),
+                  ],
+                ),
+                FilterGroup(
+                  title: 'Subject',
+                  currentValue: _selectedSubjectId,
+                  options: [
+                    const FilterOption(value: 'all', label: 'All Subjects'),
+                    ...data.subjects.map((s) => FilterOption(value: s['id'] as String, label: s['name'] as String)),
+                  ],
+                ),
+              ];
+
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
@@ -298,14 +374,46 @@ class _TeacherAssignmentsScreenState extends ConsumerState<TeacherAssignmentsScr
                       ),
                     ),
                   ),
-                  if (data.assignments.isEmpty)
-                    const SliverFillRemaining(hasScrollBody: false, child: Center(child: Text('No assignments posted yet.')))
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: SearchFilterBar(
+                        hintText: 'Search assignments...',
+                        onSearch: (val) => setState(() => _searchQuery = val),
+                        filterGroups: filterGroups,
+                        onFilterChanged: (group) {
+                          setState(() {
+                            if (group.title == 'Class') {
+                              _selectedClassId = group.currentValue ?? 'all';
+                            } else if (group.title == 'Subject') {
+                              _selectedSubjectId = group.currentValue ?? 'all';
+                            }
+                          });
+                        },
+                        sorts: _sortOptions,
+                        currentSortValue: _sortOption.value,
+                        onSortSelected: (option) => setState(() => _sortOption = option),
+                      ),
+                    ),
+                  ),
+                  if (displayedList.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Text(
+                          _searchQuery.isNotEmpty || _selectedClassId != 'all' || _selectedSubjectId != 'all'
+                              ? 'No matching assignments found.'
+                              : 'No assignments posted yet.',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ),
+                    )
                   else
                     SliverPadding(
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          data.assignments.map((a) => Padding(
+                          displayedList.map((a) => Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
                                 child: InkWell(
                                   onTap: () => _viewSubmissions(a['id'] as String, a['title'] as String),
@@ -317,7 +425,22 @@ class _TeacherAssignmentsScreenState extends ConsumerState<TeacherAssignmentsScr
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(a['title'] as String, style: Theme.of(context).textTheme.titleMedium),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(a['title'] as String, style: Theme.of(context).textTheme.titleMedium),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  GlassChip(label: a['class_name'] as String, color: AppColors.primary),
+                                                  const SizedBox(width: 6),
+                                                  GlassChip(label: a['subject_name'] as String, color: AppColors.textSecondary),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 6),
                                               Text('Due ${a['due_date']}', style: Theme.of(context).textTheme.bodyMedium),
                                             ],
                                           ),

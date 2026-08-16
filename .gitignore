@@ -75,3 +75,5 @@ TASK*.txt
 build-web-error.txt
 
 services/omr-pipeline/_last_scan_response.json
+scratch_*.py
+verify_*.py

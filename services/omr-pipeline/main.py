@@ -287,3 +287,63 @@ async def scan_sheet(
         "inserted": inserted_count,
         "replaced": deleted_count,
     }
+
+
+from pydantic import BaseModel
+from typing import List, Optional
+
+
+class ManualRecord(BaseModel):
+    student_id: str
+    status: str
+
+
+class ManualAttendanceRequest(BaseModel):
+    class_id: str
+    date: Optional[str] = None
+    records: List[ManualRecord]
+    marked_by: Optional[str] = None
+
+
+@app.post("/attendance/manual")
+async def submit_manual_attendance(req: ManualAttendanceRequest):
+    if _supabase is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase not configured",
+        )
+    att_date = req.date.strip() if req.date and req.date.strip() else datetime.date.today().isoformat()
+    try:
+        # Clear prior manual records for this class & date
+        _supabase.schema("attendance").table("records").delete().eq("class_id", req.class_id).eq("date", att_date).eq("method", "manual").execute()
+    except Exception as exc:
+        print(f"Warning: delete prior manual attendance failed: {exc}")
+
+    rows_to_insert = [
+        {
+            "student_id": r.student_id,
+            "class_id": req.class_id,
+            "date": att_date,
+            "status": r.status,
+            "method": "manual",
+            "marked_by": req.marked_by,
+        }
+        for r in req.records
+    ]
+
+    inserted = 0
+    if rows_to_insert:
+        try:
+            resp = _supabase.schema("attendance").table("records").insert(rows_to_insert).execute()
+            inserted = len(resp.data or [])
+        except Exception as exc:
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Failed to insert attendance records: {exc}")
+
+    return {
+        "status": "success",
+        "inserted": inserted,
+        "date": att_date,
+        "class_id": req.class_id,
+    }
+

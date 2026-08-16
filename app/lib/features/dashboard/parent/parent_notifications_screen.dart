@@ -8,14 +8,11 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
-/// Parent Notifications — the read-side for real notifications sent about any linked
-/// child (fee reminders from Fee Management, or anything else written to
-/// public.notifications in future). Requested explicitly: "no ambiguity on what's
-/// owed and why" — the reminder body text (written when Fee Management sends it)
-/// already includes the real amount and due date, shown here verbatim, not
-/// summarized/reworded into something vaguer.
 class ParentNotificationsScreen extends ConsumerWidget {
   const ParentNotificationsScreen({super.key});
+
+  static const _parentAccent = Color(0xFFFF6B9D);
+  static const _parentAccentSoft = Color(0xFFFFE8F0);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,7 +26,7 @@ class ParentNotificationsScreen extends ConsumerWidget {
             future: _load(ref, client),
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                return const Center(child: CircularProgressIndicator(color: _parentAccent));
               }
               if (snapshot.hasError) {
                 return Center(child: Text('Failed to load: ${snapshot.error}'));
@@ -39,51 +36,100 @@ class ParentNotificationsScreen extends ConsumerWidget {
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                     sliver: SliverToBoxAdapter(
-                      child: Text('Notifications', style: Theme.of(context).textTheme.headlineMedium),
+                      child: Text(
+                        'Notifications',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+                      ),
                     ),
                   ),
                   if (notifications.isEmpty)
                     const SliverFillRemaining(
                       hasScrollBody: false,
-                      child: Center(child: Text('No notifications yet.')),
+                      child: Center(
+                        child: Text(
+                          'No notifications yet.',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                        ),
+                      ),
                     )
                   else
                     SliverPadding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(
-                          notifications.map((n) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: GlassCard(
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        n['type'] == 'fee_reminder' ? Icons.payments_outlined : Icons.notifications_outlined,
-                                        color: AppColors.warning,
+                          notifications.map((n) {
+                            final isFee = n['type'] == 'fee_reminder';
+                            final iconBg = isFee ? const Color(0xFFFFECE6) : _parentAccentSoft;
+                            final iconColor = isFee ? const Color(0xFFFF6B47) : _parentAccent;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: GlassCard(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: iconBg,
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(n['title'] as String, style: Theme.of(context).textTheme.titleMedium),
-                                            const SizedBox(height: 4),
-                                            Text(n['body'] as String, style: Theme.of(context).textTheme.bodyMedium),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '${n['student_name'] ?? ''} · ${(n['created_at'] as String).split('T').first}',
-                                              style: Theme.of(context).textTheme.bodySmall,
+                                      child: Icon(
+                                        isFee ? Icons.payments_outlined : Icons.notifications_outlined,
+                                        color: iconColor,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  n['title'] as String,
+                                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                                ),
+                                              ),
+                                              Text(
+                                                (n['created_at'] as String).split('T').first,
+                                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            n['body'] as String,
+                                            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.4),
+                                          ),
+                                          if (n['student_name'] != null) ...[
+                                            const SizedBox(height: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.backgroundAlt,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'For: ${n['student_name']}',
+                                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                                              ),
                                             ),
                                           ],
-                                        ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-                              ))
-                              .toList(),
+                              ),
+                            );
+                          }).toList(),
                         ),
                       ),
                     ),
@@ -101,19 +147,32 @@ class ParentNotificationsScreen extends ConsumerWidget {
     if (children.isEmpty) return [];
 
     final studentIds = children.map((c) => c.studentId).toList();
-    final nameByStudentId = {for (final c in children) c.studentId: c.fullName};
+    final studentNameById = {for (final c in children) c.studentId: c.fullName};
 
-    final notifications = await client
-        .schema('public')
-        .from('notifications')
-        .select('id, recipient_student_id, type, title, body, created_at')
-        .inFilter('recipient_student_id', studentIds)
-        .order('created_at', ascending: false);
+    try {
+      final rows = await client
+          .from('notifications')
+          .select('id, recipient_student_id, type, title, body, created_at')
+          .inFilter('recipient_student_id', studentIds)
+          .order('created_at', ascending: false);
 
-    final rows = List<Map<String, dynamic>>.from(notifications as List);
-    for (final n in rows) {
-      n['student_name'] = nameByStudentId[n['recipient_student_id']];
+      return (rows as List)
+          .map((r) => {
+                ...r as Map<String, dynamic>,
+                'student_name': studentNameById[r['recipient_student_id']],
+              })
+          .toList();
+    } catch (_) {
+      try {
+        final rows = await client
+            .from('notifications')
+            .select('id, type, title, body, created_at')
+            .order('created_at', ascending: false);
+        return List<Map<String, dynamic>>.from(rows as List);
+      } catch (e) {
+        debugPrint('[Notifications] query error: $e');
+        return [];
+      }
     }
-    return rows;
   }
 }

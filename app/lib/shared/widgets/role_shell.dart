@@ -72,7 +72,11 @@ class RoleShell extends ConsumerWidget {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: GlassChip(label: role.label, icon: Icons.verified_user_outlined),
+            child: GlassChip(
+              label: role.label,
+              icon: Icons.verified_user_outlined,
+              color: role.accentOnLight,
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
@@ -97,6 +101,7 @@ class RoleShell extends ConsumerWidget {
       bottomNavigationBar: nav.flat.length <= 5
           ? NavigationBar(
               selectedIndex: _flatIndexFor(nav, location),
+              indicatorColor: role.accentSoft,
               onDestinationSelected: (i) {
                 final dest = nav.flat[i];
                 _navigateTo(context, dest.route);
@@ -105,7 +110,7 @@ class RoleShell extends ConsumerWidget {
                 for (final d in nav.flat)
                   NavigationDestination(
                     icon: Icon(d.icon),
-                    selectedIcon: Icon(d.icon),
+                    selectedIcon: Icon(d.icon, color: role.accentOnLight),
                     label: d.label,
                   ),
               ],
@@ -204,7 +209,7 @@ class _Sidebar extends ConsumerWidget {
 
     // Admin workspace toggle (only in sidebar, not drawer list — drawer gets it too).
     if (role == UserRole.admin && !asDrawerList) {
-      items.add(_WorkspaceToggle());
+      items.add(_WorkspaceToggle(role: role));
     }
 
     for (final section in effectiveSections) {
@@ -228,6 +233,7 @@ class _Sidebar extends ConsumerWidget {
           label: dest.label,
           selected: activeRoute == dest.route,
           onTap: () => onSelected(dest.route),
+          role: role,
           compact: asDrawerList,
         ));
       }
@@ -237,7 +243,7 @@ class _Sidebar extends ConsumerWidget {
       // Build drawer items with workspace toggle for admin.
       final drawerItems = <Widget>[];
       if (role == UserRole.admin) {
-        drawerItems.add(_WorkspaceToggle());
+        drawerItems.add(_WorkspaceToggle(role: role));
       }
       drawerItems.addAll(items);
 
@@ -245,7 +251,7 @@ class _Sidebar extends ConsumerWidget {
         padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
-            decoration: const BoxDecoration(color: AppColors.primary),
+            decoration: BoxDecoration(color: role.accentFill),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.end,
@@ -284,7 +290,7 @@ class _Sidebar extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
               child: Row(
                 children: [
-                  const Icon(Icons.school_rounded, color: AppColors.primary, size: 26),
+                  Icon(Icons.school_rounded, color: role.accentOnLight, size: 26),
                   const SizedBox(width: 10),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,14 +340,14 @@ class _Sidebar extends ConsumerWidget {
   }
 }
 
-/// A single sidebar navigation tile. Selected state uses a glass fill + primary icon so
-/// the active screen is obvious without a hard material highlight.
+/// A single sidebar navigation tile. Selected state uses a role-accent soft fill + role accent icon.
 class _NavTile extends StatelessWidget {
   const _NavTile({
     required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
+    required this.role,
     this.compact = false,
   });
 
@@ -349,6 +355,7 @@ class _NavTile extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final UserRole role;
   final bool compact;
 
   @override
@@ -356,14 +363,14 @@ class _NavTile extends StatelessWidget {
     if (compact) {
       return ListTile(
         leading: Icon(icon,
-            color: selected ? AppColors.primary : AppColors.textSecondary, size: 22),
+            color: selected ? role.accentOnLight : AppColors.textSecondary, size: 22),
         title: Text(label,
             style: TextStyle(
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
               color: selected ? AppColors.textPrimary : AppColors.textSecondary,
             )),
         selected: selected,
-        selectedTileColor: AppColors.primaryLight.withValues(alpha: 0.18),
+        selectedTileColor: role.accentSoft,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.input)),
         onTap: onTap,
       );
@@ -377,12 +384,12 @@ class _NavTile extends StatelessWidget {
         child: GlassCard(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           fillColor: selected
-              ? AppColors.primaryLight.withValues(alpha: 0.28)
+              ? role.accentSoft
               : AppColors.glassFill,
           child: Row(
             children: [
               Icon(icon,
-                  color: selected ? AppColors.primary : AppColors.textSecondary, size: 20),
+                  color: selected ? role.accentOnLight : AppColors.textSecondary, size: 20),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -405,6 +412,10 @@ class _NavTile extends StatelessWidget {
 /// Admin-only workspace toggle: HR / Finance. Rendered at the top of the admin
 /// sidebar to switch between the two workspaces.
 class _WorkspaceToggle extends ConsumerWidget {
+  const _WorkspaceToggle({this.role = UserRole.admin});
+
+  final UserRole role;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(adminWorkspaceProvider);
@@ -434,8 +445,8 @@ class _WorkspaceToggle extends ConsumerWidget {
         },
         style: SegmentedButton.styleFrom(
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          selectedBackgroundColor: AppColors.primaryLight.withValues(alpha: 0.28),
-          selectedForegroundColor: AppColors.primary,
+          selectedBackgroundColor: role.accentSoft,
+          selectedForegroundColor: role.accentOnLight,
           foregroundColor: AppColors.textSecondary,
           visualDensity: VisualDensity.compact,
         ),
