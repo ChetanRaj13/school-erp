@@ -2,6 +2,11 @@
 
 This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; append a new entry when you finish a task. Don't remove anything from the existing file
 
+## [2026-08-19] Docker Compose Configuration Update
+1. **Removed Retired Document-Extraction Service**: Updated [docker-compose.yml](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/docker-compose.yml) to remove the retired `document-extraction` FastAPI service container definition, matching the Edge Function migration and preventing `docker compose up` build failures.
+
+---
+
 ## [2026-08-19] Repository Cleanup: Dead Dashboards, Obsolete Scaffolds, and Documentation Consolidation
 1. **Removed Redundant Dashboards & Stale Files**: Deleted dead unrouted dashboards (`teacher_dashboard.dart`, `student_dashboard.dart`, `parent_dashboard.dart`), `.bak` file, and superseded FastAPI `services/document-extraction`.
 2. **Cleaned Abandoned Scaffolds**: Removed obsolete `.gitkeep` files from empty scaffold folders and already-populated folders.
