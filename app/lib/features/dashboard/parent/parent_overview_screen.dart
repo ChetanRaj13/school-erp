@@ -23,6 +23,7 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
   String? _selectedStudentId;
   _ParentSection _currentSection = _ParentSection.overview;
   String? _selectedReportSubjectId;
+  String _selectedReportTerm = 'all'; // 'all', 'term1', 'midterm', 'term2'
 
   static const _parentAccent = Color(0xFFFF6B9D);
   static const _parentAccentSoft = Color(0xFFFFE8F0);
@@ -331,34 +332,123 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: GlassCard(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
                       child: SizedBox(
                         height: 155,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE6F9F5),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.school_outlined, size: 22, color: Color(0xFF00877D)),
+                            // Header Row: Icon + Title + Grade Pill
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE6F9F5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.school_rounded, size: 18, color: Color(0xFF00877D)),
+                                ),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'Average Marks',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (avgMarks != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: avgColor.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                                      border: Border.all(color: avgColor.withValues(alpha: 0.3)),
+                                    ),
+                                    child: Text(
+                                      avgMarks >= 90
+                                          ? 'A+'
+                                          : avgMarks >= 80
+                                              ? 'A'
+                                              : avgMarks >= 70
+                                                  ? 'B'
+                                                  : avgMarks >= 60
+                                                      ? 'C'
+                                                      : 'D',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: avgColor,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                            const Spacer(),
-                            Text(
-                              avgMarks != null ? '${avgMarks.toStringAsFixed(1)}%' : '—',
-                              style: TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.w900,
-                                color: avgColor,
-                              ),
+
+                            // Main Score Display (Prominent Size)
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  avgMarks != null ? avgMarks.toStringAsFixed(1) : '—',
+                                  style: TextStyle(
+                                    fontSize: 40,
+                                    fontWeight: FontWeight.w900,
+                                    color: avgColor,
+                                    height: 1.0,
+                                    letterSpacing: -1,
+                                  ),
+                                ),
+                                if (avgMarks != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 2),
+                                    child: Text(
+                                      '%',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w800,
+                                        color: avgColor.withValues(alpha: 0.8),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                            const SizedBox(height: 2),
-                            const Text(
-                              'Average Marks',
-                              style: TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+
+                            // Bottom Subtitle / Trajectory Status
+                            Row(
+                              children: [
+                                Icon(
+                                  avgMarks != null && avgMarks >= 75 ? Icons.trending_up : Icons.assessment_outlined,
+                                  size: 14,
+                                  color: avgColor,
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    avgMarks == null
+                                        ? 'Pending evaluation'
+                                        : avgMarks >= 80
+                                            ? 'Distinction • All Terms'
+                                            : avgMarks >= 65
+                                                ? 'Good Standing • All Terms'
+                                                : 'Attention Needed',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textSecondary.withValues(alpha: 0.85),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -406,6 +496,140 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                     ),
                   ],
                 ),
+              ),
+
+              // ── Active EMI Plan & Fees Quick Highlight ──
+              Consumer(
+                builder: (context, ref, _) {
+                  final summaryAsync = ref.watch(childSummaryProvider(selected.studentId));
+                  return summaryAsync.maybeWhen(
+                    data: (summary) {
+                      final activePlan = summary.activeEmiPlan;
+                      final pendingInsts = summary.nextPendingInstallments;
+                      final hasPendingFee = summary.amountDue > summary.amountPaid;
+
+                      if (activePlan != null) {
+                        final monthlyAmt = (activePlan['installment_amount'] as num?)?.toDouble() ?? 0.0;
+                        final totalInst = (activePlan['total_installments'] as num?)?.toInt() ?? 3;
+                        final nextInst = pendingInsts.isNotEmpty ? pendingInsts.first : null;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE6F9F5),
+                              borderRadius: BorderRadius.circular(AppRadii.card),
+                              border: Border.all(color: const Color(0xFF00D4AA).withValues(alpha: 0.4), width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF00D4AA).withValues(alpha: 0.08),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.shield_outlined, color: Color(0xFF00877D), size: 18),
+                                        SizedBox(width: 6),
+                                        Text('EMI Financing Active', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF00877D))),
+                                      ],
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF00877D),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        '$totalInst Months Plan',
+                                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('₹${monthlyAmt.toStringAsFixed(0)} / mo', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF00877D))),
+                                        if (nextInst != null)
+                                          Text('Next: Installment #${nextInst['installment_number']} (Due: ${nextInst['due_date']})', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                                      ],
+                                    ),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF00877D),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                      ),
+                                      onPressed: () => context.go('/parent/fees'),
+                                      child: const Text('Manage EMI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      } else if (hasPendingFee) {
+                        final remaining = summary.amountDue - summary.amountPaid;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFECE6),
+                              borderRadius: BorderRadius.circular(AppRadii.card),
+                              border: Border.all(color: const Color(0xFFFF6B47).withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.info_outline, color: Color(0xFFFF6B47), size: 20),
+                                    const SizedBox(width: 10),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('₹${remaining.toStringAsFixed(0)} Fee Balance Due', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFFD84315))),
+                                        const Text('Apply for EMI or pay online', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFFF6B47),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  onPressed: () => context.go('/parent/fees'),
+                                  child: const Text('View & Pay', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                    orElse: () => const SizedBox.shrink(),
+                  );
+                },
               ),
 
               const SizedBox(height: 28),
@@ -515,21 +739,128 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
         ),
         error: (e, _) => Center(child: Text('Failed to load report card: $e')),
         data: (rc) {
-          final isDistinction = rc.overallPercentage >= 80;
+          // 1. Determine term index
+          final int? termIndex = _selectedReportTerm == 'term1'
+              ? 0
+              : _selectedReportTerm == 'midterm'
+                  ? 1
+                  : _selectedReportTerm == 'term2'
+                      ? 2
+                      : null; // 'all' is null (cumulative)
+
+          // 2. Map subjects dynamically according to selected term
+          final computedSubjects = rc.subjects.map((sub) {
+            double termPct;
+            if (termIndex != null) {
+              if (sub.termTrend.length > termIndex) {
+                termPct = sub.termTrend[termIndex];
+              } else if (sub.termTrend.isNotEmpty) {
+                termPct = sub.termTrend.last;
+              } else {
+                termPct = sub.percentage;
+              }
+            } else {
+              termPct = sub.percentage;
+            }
+
+            final marksObt = double.parse((termPct * sub.maxMarks / 100).toStringAsFixed(1));
+
+            String gradeLetter;
+            if (termPct >= 90) {
+              gradeLetter = 'A+';
+            } else if (termPct >= 80) {
+              gradeLetter = 'A';
+            } else if (termPct >= 70) {
+              gradeLetter = 'B';
+            } else if (termPct >= 55) {
+              gradeLetter = 'C';
+            } else if (termPct >= 40) {
+              gradeLetter = 'D';
+            } else {
+              gradeLetter = 'E';
+            }
+
+            return SubjectReportItem(
+              subjectId: sub.subjectId,
+              subjectName: sub.subjectName,
+              subjectCode: sub.subjectCode,
+              marksObtained: marksObt,
+              maxMarks: sub.maxMarks,
+              percentage: termPct,
+              gradeLetter: gradeLetter,
+              classAverage: sub.classAverage,
+              termLabels: sub.termLabels,
+              termTrend: sub.termTrend,
+              status: sub.status,
+            );
+          }).toList();
+
+          // Sort subjects by percentage descending for current term
+          computedSubjects.sort((a, b) => b.percentage.compareTo(a.percentage));
+
+          // Compute term-specific overall percentage & grade
+          final double overallPct = computedSubjects.isNotEmpty
+              ? double.parse((computedSubjects.map((s) => s.percentage).reduce((a, b) => a + b) / computedSubjects.length).toStringAsFixed(1))
+              : rc.overallPercentage;
+
+          final String overallGrade = overallPct >= 90
+              ? 'A+'
+              : overallPct >= 80
+                  ? 'A'
+                  : overallPct >= 70
+                      ? 'B'
+                      : overallPct >= 55
+                          ? 'C'
+                          : 'D';
+
+          final isDistinction = overallPct >= 80;
           final standingColor = isDistinction
               ? const Color(0xFF00877D)
-              : rc.overallPercentage >= 65
+              : overallPct >= 65
                   ? AppColors.primary
                   : AppColors.warning;
 
-          final selectedSubject = rc.subjects.firstWhere(
+          final bestSubject = computedSubjects.isNotEmpty ? computedSubjects.first : null;
+          final passedCount = computedSubjects.where((s) => s.percentage >= 40).length;
+
+          final selectedSubject = computedSubjects.firstWhere(
             (s) => s.subjectId == _selectedReportSubjectId,
-            orElse: () => rc.bestSubject ?? rc.subjects.first,
+            orElse: () => bestSubject ?? computedSubjects.first,
           );
+
+          // Areas needing work for the selected term (< 75% or grade C/D/E)
+          final areasNeedingWork = computedSubjects.where((s) => s.percentage < 75).map((s) {
+            return AreaNeedingWork(
+              subjectName: s.subjectName,
+              currentScore: s.percentage,
+              issue: 'Scored ${s.percentage}% (Grade ${s.gradeLetter}) in ${_getTermName(_selectedReportTerm)}.',
+              recommendation: 'Target weekly revision and practice problem sets to reach class average of ${s.classAverage}%.',
+              urgency: s.percentage < 60 ? 'high' : 'medium',
+            );
+          }).toList();
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ── Past Terms Toggle Bar ──
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildTermFilterChip('all', 'All Terms (Cumulative)'),
+                      const SizedBox(width: 8),
+                      _buildTermFilterChip('term1', 'Term 1 (Autumn)'),
+                      const SizedBox(width: 8),
+                      _buildTermFilterChip('midterm', 'Mid-Term Exam'),
+                      const SizedBox(width: 8),
+                      _buildTermFilterChip('term2', 'Term 2 (Spring)'),
+                    ],
+                  ),
+                ),
+              ),
+
               // ── 1. Overall Academic Performance Summary Card ──
               GlassCard(
                 padding: const EdgeInsets.all(20),
@@ -553,7 +884,13 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${rc.className} · Academic Year 2025-26',
+                                _selectedReportTerm == 'all'
+                                    ? '${rc.className} · Academic Year 2025-26 (Cumulative)'
+                                    : _selectedReportTerm == 'term1'
+                                        ? '${rc.className} · Term 1 (Autumn 2025)'
+                                        : _selectedReportTerm == 'midterm'
+                                            ? '${rc.className} · Mid-Term Assessment 2025-26'
+                                            : '${rc.className} · Term 2 (Spring 2026)',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   color: AppColors.textSecondary,
@@ -576,7 +913,7 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                               Icon(Icons.verified, size: 16, color: standingColor),
                               const SizedBox(width: 6),
                               Text(
-                                'Grade ${rc.overallGrade}',
+                                'Grade $overallGrade',
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w800,
@@ -599,10 +936,13 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Overall Score', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                              Text(
+                                _selectedReportTerm == 'all' ? 'Cumulative Score' : '${_getTermName(_selectedReportTerm)} Score',
+                                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                              ),
                               const SizedBox(height: 4),
                               Text(
-                                '${rc.overallPercentage}%',
+                                '$overallPct%',
                                 style: TextStyle(
                                   fontSize: 28,
                                   fontWeight: FontWeight.w900,
@@ -619,7 +959,7 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                               const Text('Passed Subjects', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                               const SizedBox(height: 4),
                               Text(
-                                '${rc.passedSubjects} / ${rc.subjects.length}',
+                                '$passedCount / ${computedSubjects.length}',
                                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                               ),
                             ],
@@ -657,7 +997,11 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              rc.standingDescription,
+                              overallPct >= 80
+                                  ? 'Outstanding academic standing! Consistently performing well above grade benchmark.'
+                                  : overallPct >= 65
+                                      ? 'Good academic standing with stable subject performance across the curriculum.'
+                                      : 'Academic attention recommended to strengthen core subject concepts.',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                             ),
                           ),
@@ -671,22 +1015,20 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
               const SizedBox(height: 20),
 
               // ── Overall Performance Multi-Term Trajectory Chart ──
-              if (rc.overallTrend.length >= 2) ...[
-                SizedBox(
-                  height: 195,
-                  child: LineChart(
-                    title: 'Overall Academic Performance Trend',
-                    labels: rc.termLabels,
-                    values: rc.overallTrend,
-                    maxValue: 100.0,
-                    chartColor: standingColor,
-                  ),
+              SizedBox(
+                height: 195,
+                child: LineChart(
+                  title: 'Overall Academic Performance Trend',
+                  labels: rc.termLabels.isNotEmpty ? rc.termLabels : const ['Term 1', 'Mid-Term', 'Term 2'],
+                  values: rc.overallTrend.isNotEmpty ? rc.overallTrend : [rc.overallPercentage],
+                  maxValue: 100.0,
+                  chartColor: standingColor,
                 ),
-                const SizedBox(height: 24),
-              ],
+              ),
+              const SizedBox(height: 24),
 
-              // ── 2. Best Subject & Areas Requiring More Work ──
-              if (rc.bestSubject != null) ...[
+              // ── 2. Best Subject Card ──
+              if (bestSubject != null) ...[
                 Row(
                   children: [
                     Expanded(
@@ -706,9 +1048,9 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                                   child: const Icon(Icons.star_rounded, size: 18, color: Color(0xFF00877D)),
                                 ),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  'Best Subject',
-                                  style: TextStyle(
+                                Text(
+                                  _selectedReportTerm == 'all' ? 'Best Subject (Overall)' : 'Top Subject (${_getTermName(_selectedReportTerm)})',
+                                  style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
                                     color: Color(0xFF00877D),
@@ -718,12 +1060,12 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              rc.bestSubject!.subjectName,
+                              bestSubject.subjectName,
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${rc.bestSubject!.marksObtained} / ${rc.bestSubject!.maxMarks} (${rc.bestSubject!.percentage}%)',
+                              '${bestSubject.marksObtained} / ${bestSubject.maxMarks} (${bestSubject.percentage}%)',
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
@@ -759,10 +1101,10 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                 height: 38,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
-                  itemCount: rc.subjects.length,
+                  itemCount: computedSubjects.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (context, i) {
-                    final s = rc.subjects[i];
+                    final s = computedSubjects[i];
                     final isSel = s.subjectId == selectedSubject.subjectId;
                     return InkWell(
                       onTap: () => setState(() => _selectedReportSubjectId = s.subjectId),
@@ -791,33 +1133,62 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
               ),
               const SizedBox(height: 12),
 
-              // Subject Trajectory Line Chart
-              if (selectedSubject.termTrend.length >= 2) ...[
-                SizedBox(
-                  height: 190,
-                  child: LineChart(
-                    title: "${selectedSubject.subjectName} Trajectory (%)",
-                    labels: selectedSubject.termLabels,
-                    values: selectedSubject.termTrend,
-                    maxValue: 100.0,
-                    chartColor: const Color(0xFF00877D),
-                  ),
+              // Subject Trajectory Line Chart (Guaranteed Rendering for all subjects)
+              SizedBox(
+                height: 195,
+                child: LineChart(
+                  title: "${selectedSubject.subjectName} Trajectory Trend (%)",
+                  labels: selectedSubject.termLabels.isNotEmpty
+                      ? selectedSubject.termLabels
+                      : const ['Term 1', 'Mid-Term', 'Term 2'],
+                  values: selectedSubject.termTrend.isNotEmpty
+                      ? selectedSubject.termTrend
+                      : [selectedSubject.percentage],
+                  maxValue: 100.0,
+                  chartColor: const Color(0xFF00877D),
                 ),
-                const SizedBox(height: 24),
-              ],
+              ),
+              const SizedBox(height: 10),
+
+              // Subject Trajectory Term Badges
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildTrajectoryPill(
+                      'Term 1',
+                      selectedSubject.termTrend.isNotEmpty ? '${selectedSubject.termTrend[0]}%' : '${selectedSubject.percentage}%',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildTrajectoryPill(
+                      'Mid-Term',
+                      selectedSubject.termTrend.length > 1 ? '${selectedSubject.termTrend[1]}%' : '${selectedSubject.percentage}%',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildTrajectoryPill(
+                      'Term 2',
+                      selectedSubject.termTrend.length > 2 ? '${selectedSubject.termTrend[2]}%' : '${selectedSubject.percentage}%',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
 
               // ── 4. All Subject Marks Table ──
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'All Subject Marks Table',
+                    _selectedReportTerm == 'all' ? 'All Subject Marks Table (Cumulative)' : 'Subject Marks — ${_getTermName(_selectedReportTerm)}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                   ),
                   GlassChip(
-                    label: '${rc.subjects.length} Subjects Evaluated',
+                    label: '${computedSubjects.length} Subjects Evaluated',
                     color: AppColors.primary,
                   ),
                 ],
@@ -843,7 +1214,7 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                     const Divider(color: AppColors.glassBorder, height: 1),
 
                     // Table Rows
-                    ...rc.subjects.map((sub) {
+                    ...computedSubjects.map((sub) {
                       final gradeColor = sub.percentage >= 85
                           ? const Color(0xFF00877D)
                           : sub.percentage >= 70
@@ -936,7 +1307,7 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
               ),
               const SizedBox(height: 12),
 
-              if (rc.areasNeedingWork.isEmpty)
+              if (areasNeedingWork.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -944,21 +1315,21 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
                     borderRadius: BorderRadius.circular(AppRadii.card),
                     border: Border.all(color: const Color(0xFF00D4AA).withValues(alpha: 0.3)),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.check_circle, color: Color(0xFF00877D), size: 20),
-                      SizedBox(width: 10),
+                      const Icon(Icons.check_circle, color: Color(0xFF00877D), size: 20),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'No critical areas flagged! Performance is consistently solid across all registered subjects.',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF00877D)),
+                          'No critical areas flagged for ${_getTermName(_selectedReportTerm)}! Performance is consistently solid across all subjects.',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF00877D)),
                         ),
                       ),
                     ],
                   ),
                 )
               else
-                ...rc.areasNeedingWork.map((area) {
+                ...areasNeedingWork.map((area) {
                   final isHigh = area.urgency == 'high';
                   final badgeColor = isHigh ? AppColors.error : const Color(0xFFFF6B47);
 
@@ -1025,6 +1396,64 @@ class _ParentOverviewScreenState extends ConsumerState<ParentOverviewScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  String _getTermName(String term) {
+    switch (term) {
+      case 'term1':
+        return 'Term 1';
+      case 'midterm':
+        return 'Mid-Term Exam';
+      case 'term2':
+        return 'Term 2';
+      default:
+        return 'All Terms (Cumulative)';
+    }
+  }
+
+  Widget _buildTermFilterChip(String key, String label) {
+    final isSel = _selectedReportTerm == key;
+    return InkWell(
+      onTap: () => setState(() => _selectedReportTerm = key),
+      borderRadius: BorderRadius.circular(AppRadii.pill),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSel ? _parentAccent : AppColors.glassFill,
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          border: Border.all(
+            color: isSel ? _parentAccent : AppColors.glassBorder,
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSel ? FontWeight.w700 : FontWeight.w600,
+            color: isSel ? Colors.white : AppColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrajectoryPill(String term, String score) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundAlt,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Column(
+        children: [
+          Text(term, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const SizedBox(height: 2),
+          Text(score, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF00877D))),
+        ],
       ),
     );
   }

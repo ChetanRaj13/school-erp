@@ -1,22 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 
-// The core visual primitive of the new "Contra kit" flat design language: a solid
-// card with a rounded corner and a thin hairline border — no blur, no gradient, no
-// drop shadow. Every card, nav tile, and input surface across the app uses this, so
-// retuning AppColors.glassFill / glassBorder / AppRadii.card in app_theme.dart
-// re-styles all of them at once.
-//
-// The class is still called GlassCard (not renamed) on purpose: 49 files construct
-// GlassCard(...) directly, and none of them need to change for this migration —
-// only what happens inside build() changes.
+/// The core card container of the design system.
+///
+/// Automatically adapts its fill background and borders in both Light and Dark mode.
 class GlassCard extends StatelessWidget {
   const GlassCard({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(20),
     this.borderRadius,
-    this.blurSigma = AppBlur.glass, // kept for API compatibility, intentionally unused
+    this.blurSigma = AppBlur.glass,
     this.fillColor,
   });
 
@@ -28,25 +22,29 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final radius = borderRadius ?? AppRadii.card;
+    final defaultFill = isDark ? const Color(0xFF1E293B).withValues(alpha: 0.9) : AppColors.glassFill;
+    final defaultBorder = isDark ? AppColors.glassBorderDark : AppColors.glassBorder;
+
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: fillColor ?? AppColors.glassFill,
+        color: fillColor ?? defaultFill,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: AppColors.glassBorder, width: 1.5),
-        // Deliberately no boxShadow — the flat system uses color/border/spacing for
-        // depth, never shadow. AppColors.glassShadow is zeroed at the source too, in
-        // case anything still references it directly.
+        border: Border.all(color: defaultBorder, width: 1.5),
       ),
-      child: child,
+      child: DefaultTextStyle.merge(
+        style: TextStyle(
+          color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+        ),
+        child: child,
+      ),
     );
   }
 }
 
-/// A pill-shaped flat chip — used for the role badge, status tags, small labels.
-/// Same public API as before; internals now render a flat solid-or-tinted pill
-/// instead of a frosted-glass one.
+/// A pill-shaped flat chip — used for role badges, status tags, and labels.
 class GlassChip extends StatelessWidget {
   const GlassChip({super.key, required this.label, this.color, this.icon});
 
@@ -56,14 +54,15 @@ class GlassChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tint = color ?? AppColors.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tint = color ?? (isDark ? const Color(0xFF38BDF8) : AppColors.primary);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        // A light tint of whatever color is passed, so chips read as "colored" per
-        // the design system without needing every call site to pass two colors.
-        color: tint.withValues(alpha: 0.12),
+        color: tint.withValues(alpha: isDark ? 0.22 : 0.12),
         borderRadius: BorderRadius.circular(AppRadii.pill),
+        border: isDark ? Border.all(color: tint.withValues(alpha: 0.4), width: 1) : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

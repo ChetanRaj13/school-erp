@@ -27,11 +27,12 @@ class SchoolErpApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
+
     return MaterialApp.router(
       title: 'School ERP',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.light,
       routerConfig: router,
     );
   }

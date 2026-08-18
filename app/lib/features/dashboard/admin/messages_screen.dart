@@ -213,8 +213,15 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
             .from('class_roster')
             .select('student_id, class_id')
             .inFilter('class_id', classIds.toList());
-        final studentIds = (rosterRows as List).map((r) => r['student_id'] as String).toList();
-        final classIdByStudent = {for (final r in rosterRows as List) r['student_id'] as String: r['class_id'] as String};
+        final studentIds = (rosterRows as List).map((r) => r['student_id'] as String).toSet().toList();
+        final classIdByStudent = <String, String>{};
+        for (final r in rosterRows as List) {
+          final sid = r['student_id'] as String?;
+          final cid = r['class_id'] as String?;
+          if (sid != null && cid != null) {
+            classIdByStudent.putIfAbsent(sid, () => cid);
+          }
+        }
 
         if (studentIds.isNotEmpty) {
           final studentRows = await client
@@ -231,15 +238,18 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
               .inFilter('id', classIds.toList());
           final classNameById = {for (final c in classRows as List) c['id'] as String: c['name'] as String};
 
-          teacherStudents = (studentRows as List).map((s) {
+          final seen = <String>{};
+          teacherStudents = [];
+          for (final s in studentRows as List) {
             final sid = s['id'] as String;
+            if (!seen.add(sid)) continue;
             final cid = classIdByStudent[sid];
             final cName = cid != null ? classNameById[cid] : null;
-            return {
+            teacherStudents.add({
               'id': sid,
               'full_name': cName != null ? '${s['full_name']} ($cName)' : s['full_name'],
-            };
-          }).toList();
+            });
+          }
         }
       } else if (role == UserRole.teacher) {
         final rosterRows = await client
@@ -247,7 +257,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
             .from('class_roster')
             .select('student_id, class_id')
             .limit(50);
-        final studentIds = (rosterRows as List).map((r) => r['student_id'] as String).toList();
+        final studentIds = (rosterRows as List).map((r) => r['student_id'] as String).toSet().toList();
         if (studentIds.isNotEmpty) {
           final studentRows = await client
               .schema('public')
@@ -255,7 +265,14 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
               .select('id, full_name')
               .inFilter('id', studentIds)
               .order('full_name');
-          teacherStudents = List<Map<String, dynamic>>.from(studentRows as List);
+          final seen = <String>{};
+          teacherStudents = [];
+          for (final s in studentRows as List) {
+            final sid = s['id'] as String;
+            if (seen.add(sid)) {
+              teacherStudents.add(Map<String, dynamic>.from(s as Map));
+            }
+          }
         }
       }
       staffList = allStaff;
@@ -323,7 +340,16 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     String? parentSenderStudentId,
     required UserRole role,
   }) {
-    if (recipientList.isEmpty) return;
+    // Deduplicate recipientList by id
+    final seenIds = <String>{};
+    final uniqueRecipients = <Map<String, dynamic>>[];
+    for (final r in recipientList) {
+      final id = r['id'] as String?;
+      if (id != null && seenIds.add(id)) {
+        uniqueRecipients.add(r);
+      }
+    }
+    if (uniqueRecipients.isEmpty) return;
     final selectedIds = <String>{};
     final bodyController = TextEditingController();
     String searchQuery = '';
@@ -334,7 +360,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          final filteredList = recipientList.where((r) {
+          final filteredList = uniqueRecipients.where((r) {
             final name = (r['full_name'] as String? ?? '').toLowerCase();
             return name.contains(searchQuery.toLowerCase().trim());
           }).toList();

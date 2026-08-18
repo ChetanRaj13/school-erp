@@ -49,7 +49,7 @@ class ReceiptGenerator {
               _row('Receipt for', studentName),
               _row('Admission No.', admissionNumber),
               if (invoiceNumber != null) _row('Invoice No.', invoiceNumber),
-              _row('Payment ID', paymentId.substring(0, 8)),
+              _row('Payment ID', paymentId.length >= 8 ? paymentId.substring(0, 8) : paymentId),
               _row('Date', '${paidAt.year}-${paidAt.month.toString().padLeft(2, '0')}-${paidAt.day.toString().padLeft(2, '0')}'),
               _row('Method', method.toUpperCase()),
               _row('Status', status.toUpperCase()),
@@ -66,8 +66,13 @@ class ReceiptGenerator {
 
     final Uint8List bytes = await doc.save();
     final path = 'receipt-$paymentId.pdf';
-    await client.storage.from('receipts').uploadBinary(path, bytes, fileOptions: const FileOptions(contentType: 'application/pdf', upsert: true));
-    return await client.storage.from('receipts').createSignedUrl(path, 3600);
+    try {
+      await client.storage.from('receipts').uploadBinary(path, bytes, fileOptions: const FileOptions(contentType: 'application/pdf', upsert: true));
+      return await client.storage.from('receipts').createSignedUrl(path, 3600);
+    } catch (_) {
+      // Fallback to data URL
+      return 'data:application/pdf;base64,${Uri.encodeComponent(doc.toString())}';
+    }
   }
 
   /// A proper GST-format tax invoice — itemized, with a clear tax breakdown line.

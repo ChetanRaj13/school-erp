@@ -1,33 +1,48 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// FLAT REDESIGN: the photo-backdrop system (background_presets.dart,
-/// background_preset_provider.dart, the mountain_trail/study_hall JPGs) is retired by
-/// this migration — the new design system uses solid, saturated color-blocked
-/// backgrounds, not photography (see docs/design.md section 2: "Backgrounds are
-/// solid, saturated colors — never gradients [or photos]").
+import '../../core/theme/background_theme_provider.dart';
+import 'background_painters.dart';
+
+/// App-wide responsive backdrop wrapper.
 ///
-/// Kept as the same widget name/constructor (`WarmBackdrop({required child})`) on
-/// purpose, so none of the screens that wrap themselves in WarmBackdrop (login,
-/// settings, and others) need to change their import or usage — only what happens
-/// inside build() changes, same pattern as glass_card.dart and stat_card.dart.
-///
-/// HONEST FOLLOW-UP NEEDED: background_presets.dart and background_preset_provider.dart
-/// still exist in the repo but are no longer read by anything after this change, and
-/// settings_screen.dart's preset picker (see the accompanying rebuild of that file) no
-/// longer offers it. That's dead code now, not deleted here since this migration
-/// intentionally only touches the shared-widget layer — flag it in docs/tech_debt.md
-/// and remove in a follow-up cleanup pass.
-class WarmBackdrop extends StatelessWidget {
+/// Dynamically renders user-selected background presets (Solid Colors, Gradients,
+/// Architectural Geometric Patterns, and Minimal Vector Landscapes) across every
+/// dashboard screen and user profile in the ERP.
+class WarmBackdrop extends ConsumerWidget {
   const WarmBackdrop({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.background,
-      child: child,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final preset = ref.watch(backgroundPresetProvider);
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. Base Layer (Solid Color or Gradient)
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: preset.gradient == null ? preset.baseColor : null,
+            gradient: preset.gradient,
+          ),
+        ),
+
+        // 2. Pattern or Vector Landscape Overlay
+        if (preset.patternType != BackgroundPatternType.none)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: BackgroundPatternWidget(
+                type: preset.patternType,
+                accentColor: preset.accentColor,
+              ),
+            ),
+          ),
+
+        // 3. Main Screen Content
+        child,
+      ],
     );
   }
 }

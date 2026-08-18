@@ -92,6 +92,14 @@ RoleNav navFor(UserRole role) {
         ]),
         NavSection(header: 'Operations', destinations: [
           NavDestination(
+              icon: Icons.person_add_alt_1_outlined,
+              label: 'Student Admissions',
+              route: '/admin/enrollment'),
+          NavDestination(
+              icon: Icons.badge_outlined,
+              label: 'Staff Attendance',
+              route: '/admin/staff-attendance'),
+          NavDestination(
               icon: Icons.event_busy_outlined,
               label: 'Leave Requests',
               route: '/admin/leave'),
@@ -129,7 +137,7 @@ RoleNav navFor(UserRole role) {
       // _adminSections method filters sections by the active workspace — here we
       // declare ALL sections and let the sidebar pick which to show.
       //
-      // HR workspace: Payroll, HR Approvals (payroll-only filter of Approval Queue),
+      // HR workspace: Staff Attendance, Payroll, HR Approvals (payroll-only filter of Approval Queue),
       //   Leave Requests.
       // Finance workspace: Fee Management, Offline Payments, Finance Approvals
       //   (POs + vendor payments only), Vendors & Procurement, Vendor Performance,
@@ -143,6 +151,10 @@ RoleNav navFor(UserRole role) {
               icon: Icons.space_dashboard_outlined, label: 'Overview', route: '/admin'),
         ]),
         NavSection(header: 'HR', destinations: [
+          NavDestination(
+              icon: Icons.badge_outlined,
+              label: 'Staff Attendance',
+              route: '/admin/staff-attendance'),
           NavDestination(
               icon: Icons.payments_outlined, label: 'Payroll', route: '/admin/payroll'),
           NavDestination(
@@ -193,6 +205,10 @@ RoleNav navFor(UserRole role) {
               route: '/admin/recent-payments'),
         ]),
         NavSection(header: 'Operations', destinations: [
+          NavDestination(
+              icon: Icons.person_add_alt_1_outlined,
+              label: 'Student Admissions',
+              route: '/admin/enrollment'),
           NavDestination(
               icon: Icons.campaign_outlined,
               label: 'Announcements',

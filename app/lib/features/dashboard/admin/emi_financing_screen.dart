@@ -181,10 +181,43 @@ class _EmiFinancingScreenState extends ConsumerState<EmiFinancingScreen> {
       await client.schema('finance').from('payment_plans').update({
         'status': approve ? 'active' : 'rejected',
       }).eq('id', planId);
+
+      if (approve) {
+        final plan = await client
+            .schema('finance')
+            .from('payment_plans')
+            .select('*')
+            .eq('id', planId)
+            .maybeSingle();
+        if (plan != null) {
+          final existingInst = await client
+              .schema('finance')
+              .from('payment_plan_installments')
+              .select('id')
+              .eq('payment_plan_id', planId);
+          if ((existingInst as List).isEmpty) {
+            final count = (plan['total_installments'] as num).toInt();
+            final amt = (plan['installment_amount'] as num).toDouble();
+            final startDate = DateTime.tryParse(plan['start_date']?.toString() ?? '') ?? DateTime.now();
+            final installments = List.generate(count, (i) {
+              final dueDate = DateTime(startDate.year, startDate.month + i + 1, startDate.day);
+              return {
+                'payment_plan_id': planId,
+                'installment_number': i + 1,
+                'due_date': dueDate.toIso8601String().split('T').first,
+                'amount': amt,
+                'status': 'pending',
+              };
+            });
+            await client.schema('finance').from('payment_plan_installments').insert(installments);
+          }
+        }
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(approve ? 'Plan approved.' : 'Plan rejected.'),
+          content: Text(approve ? 'Plan approved & active schedule generated.' : 'Plan rejected.'),
           backgroundColor: approve ? AppColors.success : AppColors.error,
         ),
       );

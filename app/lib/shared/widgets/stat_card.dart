@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 
-/// Same public API as before (label/value/icon/subtitle/color) — every one of the 8
-/// real call sites keeps working unchanged. Internals now render the flat system's
-/// icon-badge stat card instead of a plain Material Card.
+/// Stat card primitive adapting dynamically to light and dark theme mode.
 class StatCard extends StatelessWidget {
   const StatCard({
     super.key,
@@ -22,12 +20,16 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tint = color ?? AppColors.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tint = color ?? (isDark ? const Color(0xFF38BDF8) : AppColors.primary);
+    final cardBg = isDark ? const Color(0xFF1E293B) : AppColors.backgroundAlt;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.backgroundAlt,
+        color: cardBg,
         borderRadius: BorderRadius.circular(AppRadii.card),
+        border: isDark ? Border.all(color: AppColors.glassBorderDark, width: 1.2) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -36,7 +38,7 @@ class StatCard extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: tint.withValues(alpha: 0.14),
+              color: tint.withValues(alpha: isDark ? 0.22 : 0.14),
               borderRadius: BorderRadius.circular(AppRadii.chip),
             ),
             child: Icon(icon, color: tint, size: 18),
@@ -44,12 +46,17 @@ class StatCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 20),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontSize: 20,
+                  color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                ),
           ),
           const SizedBox(height: 2),
           Text(
             label,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                ),
             overflow: TextOverflow.ellipsis,
             maxLines: 2,
           ),

@@ -273,6 +273,7 @@ class AdminDashboard extends ConsumerWidget {
     return BarChart(
       data: expenseData,
       title: 'Expense Breakdown',
+      valuePrefix: '₹',
       primaryColor: AppColors.secondary,
     );
   }
@@ -304,6 +305,7 @@ class AdminDashboard extends ConsumerWidget {
     return BarChart(
       data: {'Primary': (students ~/ 3).toDouble(), 'Secondary': (students ~/ 3).toDouble(), 'Senior Secondary': (students ~/ 3).toDouble()},
       title: 'Student Distribution by Level',
+      valuePrefix: '',
       primaryColor: AppColors.primary,
     );
   }
@@ -490,33 +492,41 @@ class QuickActionsExpanded extends StatelessWidget {
             itemCount: 12,
             itemBuilder: (context, index) {
               final actions = [
-                (Icons.event_available_outlined, 'Schedule Event'),
-                (Icons.report_outlined, 'Generate Report'),
-                (Icons.settings_outlined, 'Configure Settings'),
-                (Icons.group_add_outlined, 'Add Student'),
-                (Icons.person_add_alt_outlined, 'Add Staff'),
-                (Icons.storefront_outlined, 'Manage Vendors'),
-                (Icons.medical_services_outlined, 'Fee Waivers'),
-                (Icons.credit_score_outlined, 'EMI Plans'),
-                (Icons.account_balance_wallet_outlined, 'Budget Planning'),
-                (Icons.feedback_outlined, 'Feedback Survey'),
-                (Icons.logout_rounded, 'Export Data'),
-                (Icons.help_outline, 'Help & Support'),
+                (Icons.settings_outlined, 'Configure Settings', '/settings'),
+                (Icons.group_add_outlined, 'Add Student', '/admin/enrollment'),
+                (Icons.person_add_alt_outlined, 'Add Staff', '/admin/payroll'),
+                (Icons.medical_services_outlined, 'Fee Waivers', '/admin/waivers'),
+                (Icons.credit_score_outlined, 'EMI Plans', '/admin/emi'),
+                (Icons.account_balance_wallet_outlined, 'Budget Planning', '/admin/budget'),
+                (Icons.storefront_outlined, 'Manage Vendors', '/admin/vendors'),
+                (Icons.fact_check_outlined, 'Document Review', '/admin/documents'),
+                (Icons.document_scanner_outlined, 'OMR Attendance', '/admin/omr'),
+                (Icons.calendar_view_week_outlined, 'Weekly Timetable', '/admin/timetable'),
+                (Icons.campaign_outlined, 'Announcements', '/admin/announcements'),
+                (Icons.mail_outline, 'Messages', '/admin/messages'),
               ];
 
               if (index >= actions.length) return const SizedBox();
 
-              final (icon, label) = actions[index];
-              return GlassCard(
-                padding: const EdgeInsets.all(12),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(icon, size: 32, color: AppColors.primary),
-                      const SizedBox(height: 8),
-                      Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
-                    ],
+              final (icon, label, route) = actions[index];
+              return InkWell(
+                onTap: () => context.go(route),
+                borderRadius: BorderRadius.circular(AppRadii.card),
+                child: GlassCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icon, size: 28, color: AppColors.primary),
+                        const SizedBox(height: 8),
+                        Text(
+                          label,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -559,11 +569,22 @@ class _BudgetBreakdownSectionState extends ConsumerState<_BudgetBreakdownSection
     final orders = await client
         .schema('finance')
         .from('purchase_orders')
-        .select('category, amount, status');
+        .select('category, amount, status, created_at');
     final actualByCategory = <String, double>{};
     for (final o in orders as List) {
-      final cat = (o['category'] as String?) ?? 'uncategorized';
-      actualByCategory[cat] = (actualByCategory[cat] ?? 0) + (o['amount'] as num).toDouble();
+      final cat = ((o['category'] as String?) ?? 'uncategorized').toLowerCase().trim();
+      final dtStr = o['created_at'] as String?;
+      String ay = '2026-27';
+      if (dtStr != null && dtStr.isNotEmpty) {
+        final dt = DateTime.tryParse(dtStr);
+        if (dt != null) {
+          ay = dt.month >= 4 ? '${dt.year}-${(dt.year + 1).toString().substring(2)}' : '${dt.year - 1}-${dt.year.toString().substring(2)}';
+        }
+      }
+      final amt = (o['amount'] as num?)?.toDouble() ?? 0.0;
+      final key = '${cat}_$ay';
+      actualByCategory[key] = (actualByCategory[key] ?? 0.0) + amt;
+      actualByCategory[cat] = (actualByCategory[cat] ?? 0.0) + amt;
     }
 
     return _BudgetData(

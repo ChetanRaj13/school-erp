@@ -25,6 +25,20 @@ class BudgetScreen extends ConsumerStatefulWidget {
 
 class _BudgetScreenState extends ConsumerState<BudgetScreen> {
   late Future<_BudgetData> _future;
+  String _selectedAcademicYear = '2026-27';
+
+  static String _getAcademicYear(String? createdAt) {
+    if (createdAt == null || createdAt.isEmpty) return '2026-27';
+    final dt = DateTime.tryParse(createdAt);
+    if (dt == null) return '2026-27';
+    final year = dt.year;
+    final month = dt.month;
+    if (month >= 4) {
+      return '$year-${(year + 1).toString().substring(2)}';
+    } else {
+      return '${year - 1}-${year.toString().substring(2)}';
+    }
+  }
 
   @override
   void initState() {
@@ -41,17 +55,21 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
         .select('id, category, academic_year, planned_amount')
         .order('category');
 
-    final orders = await client.schema('finance').from('purchase_orders').select('category, amount, status');
+    final orders = await client.schema('finance').from('purchase_orders').select('category, amount, status, created_at');
     final actualByCategory = <String, double>{};
     for (final o in orders as List) {
-      final cat = (o['category'] as String?) ?? 'uncategorized';
-      actualByCategory[cat] = (actualByCategory[cat] ?? 0) + (o['amount'] as num).toDouble();
+      final cat = ((o['category'] as String?) ?? 'uncategorized').toLowerCase().trim();
+      final ay = _getAcademicYear(o['created_at'] as String?);
+      final amt = (o['amount'] as num?)?.toDouble() ?? 0.0;
+      final key = '${cat}_$ay';
+      actualByCategory[key] = (actualByCategory[key] ?? 0.0) + amt;
+      actualByCategory[cat] = (actualByCategory[cat] ?? 0.0) + amt;
     }
 
-    final payrollRows = await client.schema('finance').from('payroll_runs').select('net_amount');
+    final payrollRows = await client.schema('finance').from('payroll_runs').select('net_amount, pay_period');
     double totalPayroll = 0;
     for (final p in payrollRows as List) {
-      totalPayroll += (p['net_amount'] as num).toDouble();
+      totalPayroll += (p['net_amount'] as num?)?.toDouble() ?? 0.0;
     }
 
     return _BudgetData(
@@ -83,7 +101,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
 
   void _showAddSheet() {
     final categoryController = TextEditingController();
-    final yearController = TextEditingController(text: '2026-27');
+    final yearController = TextEditingController(text: _selectedAcademicYear == 'all' ? '2026-27' : _selectedAcademicYear);
     final amountController = TextEditingController();
     showModalBottomSheet(
       context: context,
@@ -105,7 +123,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
               const SizedBox(height: 16),
               TextField(controller: categoryController, decoration: const InputDecoration(labelText: 'Category (e.g. "supplies")')),
               const SizedBox(height: 12),
-              TextField(controller: yearController, decoration: const InputDecoration(labelText: 'Academic year')),
+              TextField(controller: yearController, decoration: const InputDecoration(labelText: 'Academic year (e.g. "2026-27")')),
               const SizedBox(height: 12),
               TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Planned amount (₹)')),
               const SizedBox(height: 20),
@@ -116,7 +134,7 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
                   Navigator.of(context).pop();
                   _addBudgetLine(categoryController.text.trim(), yearController.text.trim(), amount);
                 },
-                child: const Text('Add'),
+                child: const Text('Add Line'),
               ),
             ],
           ),
@@ -142,16 +160,117 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
               }
               final data = snapshot.data!;
 
+              final availableYears = data.budgets
+                  .map((b) => (b['academic_year'] as String?) ?? '')
+                  .where((y) => y.isNotEmpty)
+                  .toSet()
+                  .toList()
+                ..sort((a, b) => b.compareTo(a));
+
+              final displayedBudgets = _selectedAcademicYear == 'all'
+                  ? data.budgets
+                  : data.budgets.where((b) => b['academic_year'] == _selectedAcademicYear).toList();
+
+              final totalPlannedForYear = displayedBudgets.fold<double>(
+                  0.0, (sum, b) => sum + ((b['planned_amount'] as num?)?.toDouble() ?? 0.0));
+
+              final totalActualForYear = displayedBudgets.fold<double>(0.0, (sum, b) {
+                final cat = ((b['category'] as String?) ?? '').toLowerCase().trim();
+                final ay = (b['academic_year'] as String?) ?? '';
+                final spent = data.actualByCategory['${cat}_$ay'] ?? 0.0;
+                return sum + spent;
+              });
+
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                     sliver: SliverToBoxAdapter(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text('Budget', style: Theme.of(context).textTheme.headlineMedium),
-                          ElevatedButton.icon(onPressed: _showAddSheet, icon: const Icon(Icons.add, size: 18), label: const Text('New line')),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Budget & Expenditure', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Planned budget limits vs real-time purchase order utilization',
+                                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: _showAddSheet,
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                label: const Text('New Line'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Academic Year Filter Bar
+                          GlassCard(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.filter_alt_outlined, size: 18, color: AppColors.primary),
+                                const SizedBox(width: 8),
+                                const Text('Fiscal Year:', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      children: [
+                                        for (final y in availableYears)
+                                          Padding(
+                                            padding: const EdgeInsets.only(right: 8),
+                                            child: ChoiceChip(
+                                              label: Text(y == '2026-27' ? '$y (Current)' : y),
+                                              selected: _selectedAcademicYear == y,
+                                              onSelected: (selected) {
+                                                if (selected) setState(() => _selectedAcademicYear = y);
+                                              },
+                                              selectedColor: AppColors.primary.withValues(alpha: 0.18),
+                                              labelStyle: TextStyle(
+                                                color: _selectedAcademicYear == y ? AppColors.primary : AppColors.textSecondary,
+                                                fontWeight: _selectedAcademicYear == y ? FontWeight.w700 : FontWeight.w500,
+                                                fontSize: 12,
+                                              ),
+                                              visualDensity: VisualDensity.compact,
+                                            ),
+                                          ),
+                                        ChoiceChip(
+                                          label: const Text('All Years'),
+                                          selected: _selectedAcademicYear == 'all',
+                                          onSelected: (selected) {
+                                            if (selected) setState(() => _selectedAcademicYear = 'all');
+                                          },
+                                          selectedColor: AppColors.primary.withValues(alpha: 0.18),
+                                          labelStyle: TextStyle(
+                                            color: _selectedAcademicYear == 'all' ? AppColors.primary : AppColors.textSecondary,
+                                            fontWeight: _selectedAcademicYear == 'all' ? FontWeight.w700 : FontWeight.w500,
+                                            fontSize: 12,
+                                          ),
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -160,17 +279,125 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
                     padding: const EdgeInsets.all(20),
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
+                        // Summary Stats Cards (Total Planned, Actual Spend, and Calculated Utilization %)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GlassCard(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _selectedAcademicYear == 'all' ? 'Total Planned (All Years)' : 'Total Budget Planned',
+                                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '₹${totalPlannedForYear.toStringAsFixed(0)}',
+                                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _selectedAcademicYear == 'all' ? 'Sum of all fiscal years' : 'AY $_selectedAcademicYear budget pool',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: GlassCard(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _selectedAcademicYear == 'all' ? 'Actual Spend (All Years)' : 'Actual Spend (POs)',
+                                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '₹${totalActualForYear.toStringAsFixed(0)}',
+                                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            color: totalActualForYear > totalPlannedForYear ? AppColors.error : AppColors.primary,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Approved purchase orders',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: GlassCard(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          _selectedAcademicYear == 'all' ? 'All-Years Consumed' : 'Budget Consumed',
+                                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: (totalPlannedForYear > 0 && (totalActualForYear / totalPlannedForYear) > 1.0)
+                                                ? AppColors.error.withValues(alpha: 0.12)
+                                                : const Color(0xFF059669).withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            totalPlannedForYear > 0 && (totalActualForYear / totalPlannedForYear) > 1.0 ? 'OVER' : 'ON TRACK',
+                                            style: TextStyle(
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: totalPlannedForYear > 0 && (totalActualForYear / totalPlannedForYear) > 1.0 ? AppColors.error : const Color(0xFF059669),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      totalPlannedForYear > 0 ? '${((totalActualForYear / totalPlannedForYear) * 100).toStringAsFixed(1)}%' : '0.0%',
+                                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                            fontWeight: FontWeight.w900,
+                                            color: totalPlannedForYear > 0 && (totalActualForYear / totalPlannedForYear) > 1.0 ? AppColors.error : const Color(0xFF059669),
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '₹${(totalPlannedForYear - totalActualForYear).clamp(0.0, double.infinity).toStringAsFixed(0)} remaining',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
                         GlassCard(
                           child: Row(
                             children: [
-                              const Icon(Icons.payments_outlined, color: AppColors.primary),
-                              const SizedBox(width: 10),
+                              const Icon(Icons.payments_outlined, color: AppColors.primary, size: 24),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Total Payroll (all-time)', style: Theme.of(context).textTheme.bodyMedium),
-                                    Text('₹${data.totalPayroll.toStringAsFixed(0)}', style: Theme.of(context).textTheme.titleLarge),
+                                    Text('Total Payroll Distributed (all-time)', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
+                                    Text('₹${data.totalPayroll.toStringAsFixed(0)}', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                                   ],
                                 ),
                               ),
@@ -179,8 +406,11 @@ class _BudgetScreenState extends ConsumerState<BudgetScreen> {
                         ),
                         const SizedBox(height: 20),
                         BudgetBreakdownWidget(
-                          budgets: data.budgets,
+                          budgets: displayedBudgets,
                           actualByCategory: data.actualByCategory,
+                          title: _selectedAcademicYear == 'all'
+                              ? 'Budget by Category (All Fiscal Years)'
+                              : 'Budget by Category ($_selectedAcademicYear)',
                         ),
                       ]),
                     ),

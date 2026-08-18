@@ -243,25 +243,62 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
     );
   }
 
-  Future<void> _sendBulkReminders(List<Map<String, dynamic>> invoices) async {
+  Future<void> _sendBulkReminders(List<Map<String, dynamic>> invoices, {String? customTitle}) async {
+    if (invoices.isEmpty) return;
     final client = ref.read(supabaseClientProvider);
     int sent = 0;
     try {
       for (final invoice in invoices) {
         final remaining = (invoice['amount_due'] as num).toDouble() - (invoice['amount_paid'] as num).toDouble();
+        final isOverdue = invoice['is_overdue'] == true;
         await client.schema('public').from('notifications').insert({
           'recipient_student_id': invoice['student_id'],
           'type': 'fee_reminder',
-          'title': 'Fee payment reminder',
-          'body': '₹${remaining.toStringAsFixed(0)} is overdue (was due ${invoice['due_date']}). Please make payment at your earliest convenience.',
+          'title': customTitle ?? (isOverdue ? 'Overdue Fee Notice' : 'Fee Payment Reminder'),
+          'body': '₹${remaining.toStringAsFixed(0)} is ${isOverdue ? "overdue (due date: ${invoice['due_date']})" : "due on ${invoice['due_date']}"}. Please make payment at your earliest convenience.',
         });
         sent++;
       }
-      _refresh('Sent $sent reminder${sent == 1 ? '' : 's'}.');
+      _refresh('Sent $sent reminder${sent == 1 ? '' : 's'} successfully.');
       setState(() => _selectedOverdueIds.clear());
     } catch (e) {
       _refresh('Sent $sent before failing: $e', isError: true);
     }
+  }
+
+  void _confirmAndSendToAll(List<Map<String, dynamic>> invoices, {required bool isOverdue}) {
+    if (invoices.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(isOverdue ? Icons.notification_important_rounded : Icons.notifications_active_rounded,
+                color: isOverdue ? AppColors.error : AppColors.primary),
+            const SizedBox(width: 8),
+            Text(isOverdue ? 'Remind All Defaulters' : 'Remind All Students'),
+          ],
+        ),
+        content: Text(
+          'Send fee reminder notification to all ${invoices.length} ${isOverdue ? "overdue defaulters" : "students with upcoming due amounts"} at once?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _sendBulkReminders(invoices, customTitle: isOverdue ? 'Urgent: Overdue Fee Notice' : 'Upcoming Fee Reminder');
+            },
+            icon: const Icon(Icons.send_rounded, size: 16),
+            label: Text('Send to All (${invoices.length})'),
+            style: isOverdue ? ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white) : null,
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCreateInvoiceSheet(List<Map<String, dynamic>> students, List<Map<String, dynamic>> feeStructures) {
@@ -442,32 +479,124 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
               final upcoming = data.unpaidInvoices.where((i) => i['is_overdue'] == false).toList();
 
               return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 1. Fee Management Header with Spacing & Actions
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text('Fee Management', style: Theme.of(context).textTheme.headlineMedium),
-                        ElevatedButton.icon(
-                          onPressed: () => _showCreateInvoiceSheet(data.students, data.feeStructures),
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('New invoice'),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Fee Management',
+                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.5,
+                                  ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${overdue.length} overdue · ${upcoming.length} upcoming invoices',
+                              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 8,
+                          children: [
+                            if (overdue.isNotEmpty)
+                              ElevatedButton.icon(
+                                onPressed: () => _confirmAndSendToAll(overdue, isOverdue: true),
+                                icon: const Icon(Icons.notifications_active_rounded, size: 17),
+                                label: Text('Remind All (${overdue.length})'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFD32F2F),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ElevatedButton.icon(
+                              onPressed: () => _showCreateInvoiceSheet(data.students, data.feeStructures),
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('New Invoice'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  TabBar(
-                    controller: _tabController,
-                    labelColor: AppColors.primary,
-                    unselectedLabelColor: AppColors.textSecondary,
-                    indicatorColor: AppColors.primary,
-                    tabs: const [
-                      Tab(text: 'Overdue'),
-                      Tab(text: 'Upcoming'),
-                      Tab(text: 'Bulk Actions'),
-                    ],
+
+                  // Generous vertical spacing before the navigation line / tabs
+                  const SizedBox(height: 8),
+
+                  // Styled Glassmorphic TabBar Container
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.glassBorder),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      labelColor: AppColors.primary,
+                      unselectedLabelColor: AppColors.textSecondary,
+                      indicatorColor: AppColors.primary,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicatorWeight: 3,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                      tabs: [
+                        Tab(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, size: 16),
+                              const SizedBox(width: 6),
+                              Text('Overdue (${overdue.length})'),
+                            ],
+                          ),
+                        ),
+                        Tab(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.calendar_today_outlined, size: 16),
+                              const SizedBox(width: 6),
+                              Text('Upcoming (${upcoming.length})'),
+                            ],
+                          ),
+                        ),
+                        const Tab(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.layers_outlined, size: 16),
+                              SizedBox(width: 6),
+                              Text('Bulk Actions'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+
+                  const SizedBox(height: 12),
+
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
@@ -497,12 +626,6 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
       }).toList();
     }
 
-    // Apply status filter
-    if (_filterValue != 'all') {
-      // In a real implementation, you'd have more meaningful filters
-      // For now, this is a placeholder
-    }
-
     // Apply sort
     if (_sortOption != null) {
       filteredOverdue = ListSorter.sortItems(filteredOverdue, _sortOption!, true).toList();
@@ -512,13 +635,15 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
       return const Center(child: Text('No overdue invoices.'));
     }
 
+    final allFilteredSelected = filteredOverdue.isNotEmpty && filteredOverdue.every((i) => _selectedOverdueIds.contains(i['id']));
+
     return Column(
       children: [
         // Search and filter controls for this tab
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
           child: SearchFilterBar(
-            hintText: 'Search by student name...',
+            hintText: 'Search overdue by student name...',
             searchQuery: _searchQuery,
             showClearSearch: true,
             onSearch: _onSearchOverdue,
@@ -528,69 +653,125 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
           ),
         ),
 
-        if (_selectedOverdueIds.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: ElevatedButton.icon(
-              onPressed: () => _sendBulkReminders(filteredOverdue.where((i) => _selectedOverdueIds.contains(i['id'])).toList()),
-              icon: const Icon(Icons.notifications_active_outlined, size: 18),
-              label: Text('Send reminder to ${_selectedOverdueIds.length} selected'),
+        // Quick Bulk Actions Bar (Select All / Remind All / Remind Selected)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+          child: GlassCard(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: allFilteredSelected,
+                  tristate: _selectedOverdueIds.isNotEmpty && !allFilteredSelected,
+                  onChanged: (v) {
+                    setState(() {
+                      if (v == true) {
+                        for (final inv in filteredOverdue) {
+                          _selectedOverdueIds.add(inv['id'] as String);
+                        }
+                      } else {
+                        for (final inv in filteredOverdue) {
+                          _selectedOverdueIds.remove(inv['id']);
+                        }
+                      }
+                    });
+                  },
+                ),
+                Text(
+                  _selectedOverdueIds.isEmpty
+                      ? 'Select All (${filteredOverdue.length})'
+                      : '${_selectedOverdueIds.length} of ${filteredOverdue.length} Selected',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                const Spacer(),
+                if (_selectedOverdueIds.isNotEmpty)
+                  ElevatedButton.icon(
+                    onPressed: () => _sendBulkReminders(
+                      filteredOverdue.where((i) => _selectedOverdueIds.contains(i['id'])).toList(),
+                      customTitle: 'Overdue Fee Notice',
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 15),
+                    label: Text('Remind Selected (${_selectedOverdueIds.length})'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: () => _confirmAndSendToAll(filteredOverdue, isOverdue: true),
+                    icon: const Icon(Icons.notifications_active_outlined, size: 15, color: Color(0xFFD32F2F)),
+                    label: Text('Remind All Overdue (${filteredOverdue.length})', style: const TextStyle(color: Color(0xFFD32F2F))),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFD32F2F)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+              ],
             ),
           ),
+        ),
+
         Expanded(
-          child: filteredOverdue.isEmpty
-              ? const Center(child: Text('No matching overdue invoices.'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: filteredOverdue.length,
-                  itemBuilder: (context, index) {
-                    final inv = filteredOverdue[index];
-                    final remaining = (inv['amount_due'] as num).toDouble() - (inv['amount_paid'] as num).toDouble();
-                    final selected = _selectedOverdueIds.contains(inv['id']);
-                    final hasGstPdf = _generatedGstUrls.containsKey(inv['id']);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: GlassCard(
-                        child: Row(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            itemCount: filteredOverdue.length,
+            itemBuilder: (context, index) {
+              final inv = filteredOverdue[index];
+              final remaining = (inv['amount_due'] as num).toDouble() - (inv['amount_paid'] as num).toDouble();
+              final selected = _selectedOverdueIds.contains(inv['id']);
+              final hasGstPdf = _generatedGstUrls.containsKey(inv['id']);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: GlassCard(
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: selected,
+                        onChanged: (v) => setState(() {
+                          if (v == true) {
+                            _selectedOverdueIds.add(inv['id'] as String);
+                          } else {
+                            _selectedOverdueIds.remove(inv['id']);
+                          }
+                        }),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Checkbox(
-                              value: selected,
-                              onChanged: (v) => setState(() {
-                                if (v == true) {
-                                  _selectedOverdueIds.add(inv['id'] as String);
-                                } else {
-                                  _selectedOverdueIds.remove(inv['id']);
-                                }
-                              }),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(inv['student_name'] as String, style: Theme.of(context).textTheme.titleMedium),
-                                  Text('₹${remaining.toStringAsFixed(0)} · overdue since ${inv['due_date']}', style: const TextStyle(color: AppColors.error)),
-                                ],
-                              ),
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                TextButton(onPressed: () => _sendReminder(inv), child: const Text('Remind')),
-                                const SizedBox(width: 4),
-                                OutlinedButton.icon(
-                                  onPressed: () => _generateGstInvoice(inv),
-                                  icon: Icon(hasGstPdf ? Icons.picture_as_pdf : Icons.picture_as_pdf_outlined, size: 16),
-                                  label: Text(hasGstPdf ? 'View GST Invoice' : 'GST Invoice'),
-                                  style: hasGstPdf ? OutlinedButton.styleFrom(foregroundColor: AppColors.success) : null,
-                                ),
-                              ],
-                            ),
+                            Text(inv['student_name'] as String, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 2),
+                            Text('₹${remaining.toStringAsFixed(0)} · overdue since ${inv['due_date']}', style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.w600, fontSize: 13)),
                           ],
                         ),
                       ),
-                    );
-                  },
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => _sendReminder(inv),
+                            icon: const Icon(Icons.send_rounded, size: 14),
+                            label: const Text('Remind'),
+                          ),
+                          const SizedBox(width: 4),
+                          OutlinedButton.icon(
+                            onPressed: () => _generateGstInvoice(inv),
+                            icon: Icon(hasGstPdf ? Icons.picture_as_pdf : Icons.picture_as_pdf_outlined, size: 15),
+                            label: Text(hasGstPdf ? 'View GST' : 'GST Invoice'),
+                            style: hasGstPdf ? OutlinedButton.styleFrom(foregroundColor: AppColors.success) : null,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -610,7 +791,7 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
           child: SearchFilterBar(
             hintText: 'Search upcoming by student name...',
             searchQuery: _searchQuery,
@@ -618,9 +799,29 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
             onSearch: _onSearchOverdue,
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('${filteredUpcoming.length} upcoming invoices', style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              ElevatedButton.icon(
+                onPressed: () => _confirmAndSendToAll(filteredUpcoming, isOverdue: false),
+                icon: const Icon(Icons.notifications_active_outlined, size: 15),
+                label: Text('Remind All Upcoming (${filteredUpcoming.length})'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
             itemCount: filteredUpcoming.length,
             itemBuilder: (context, index) {
               final inv = filteredUpcoming[index];
@@ -635,20 +836,25 @@ class _FeeManagementScreenState extends ConsumerState<FeeManagementScreen> with 
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(inv['student_name'] as String, style: Theme.of(context).textTheme.titleMedium),
-                            Text('₹${remaining.toStringAsFixed(0)} · due ${inv['due_date']}', style: Theme.of(context).textTheme.bodyMedium),
+                            Text(inv['student_name'] as String, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 2),
+                            Text('₹${remaining.toStringAsFixed(0)} · due on ${inv['due_date']}', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
                           ],
                         ),
                       ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          TextButton(onPressed: () => _sendReminder(inv), child: const Text('Remind')),
+                          TextButton.icon(
+                            onPressed: () => _sendReminder(inv),
+                            icon: const Icon(Icons.send_rounded, size: 14),
+                            label: const Text('Remind'),
+                          ),
                           const SizedBox(width: 4),
                           OutlinedButton.icon(
                             onPressed: () => _generateGstInvoice(inv),
-                            icon: Icon(hasGstPdf ? Icons.picture_as_pdf : Icons.picture_as_pdf_outlined, size: 16),
-                            label: Text(hasGstPdf ? 'View GST Invoice' : 'GST Invoice'),
+                            icon: Icon(hasGstPdf ? Icons.picture_as_pdf : Icons.picture_as_pdf_outlined, size: 15),
+                            label: Text(hasGstPdf ? 'View GST' : 'GST Invoice'),
                             style: hasGstPdf ? OutlinedButton.styleFrom(foregroundColor: AppColors.success) : null,
                           ),
                         ],

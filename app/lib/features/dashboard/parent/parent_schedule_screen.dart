@@ -8,6 +8,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/warm_backdrop.dart';
 
+enum _ScheduleViewMode { weeklyTable, dayTable }
+
 class ParentScheduleScreen extends ConsumerStatefulWidget {
   const ParentScheduleScreen({super.key});
 
@@ -17,8 +19,42 @@ class ParentScheduleScreen extends ConsumerStatefulWidget {
 
 class _ParentScheduleScreenState extends ConsumerState<ParentScheduleScreen> {
   String? _selectedStudentId;
+  _ScheduleViewMode _viewMode = _ScheduleViewMode.weeklyTable;
+  String _selectedDay = 'mon';
+
   static const _parentAccent = Color(0xFFFF6B9D);
   static const _parentAccentSoft = Color(0xFFFFE8F0);
+
+  static const _days = ['mon', 'tue', 'wed', 'thu', 'fri'];
+  static const _dayFullNames = {
+    'mon': 'Monday',
+    'tue': 'Tuesday',
+    'wed': 'Wednesday',
+    'thu': 'Thursday',
+    'fri': 'Friday',
+  };
+
+  static const _periodTimes = {
+    1: '08:30 - 09:15',
+    2: '09:15 - 10:00',
+    3: '10:15 - 11:00',
+    4: '11:00 - 11:45',
+    5: '12:30 - 01:15',
+    6: '01:15 - 02:00',
+    7: '02:00 - 02:45',
+    8: '02:45 - 03:30',
+  };
+
+  Color _getSubjectColor(String subject) {
+    final s = subject.toLowerCase();
+    if (s.contains('math')) return const Color(0xFF4F46E5); // Indigo
+    if (s.contains('phys') || s.contains('sci') || s.contains('chem') || s.contains('bio')) return const Color(0xFF00877D); // Teal
+    if (s.contains('eng') || s.contains('lit') || s.contains('lang') || s.contains('hindi')) return const Color(0xFFFF6B9D); // Hot Pink
+    if (s.contains('hist') || s.contains('soc') || s.contains('geo') || s.contains('civic')) return const Color(0xFFD97706); // Amber
+    if (s.contains('cs') || s.contains('comp') || s.contains('code') || s.contains('it')) return const Color(0xFF0284C7); // Sky Blue
+    if (s.contains('art') || s.contains('music') || s.contains('pe') || s.contains('sport') || s.contains('yoga')) return const Color(0xFF7C3AED); // Purple
+    return const Color(0xFF00877D);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,10 +80,44 @@ class _ParentScheduleScreenState extends ConsumerState<ParentScheduleScreen> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Title & View Mode Switcher
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                    child: Text('Timetable & Schedule', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Class Timetable',
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        SegmentedButton<_ScheduleViewMode>(
+                          segments: const [
+                            ButtonSegment(
+                              value: _ScheduleViewMode.weeklyTable,
+                              icon: Icon(Icons.table_chart_outlined, size: 16),
+                              label: Text('Full Table', style: TextStyle(fontSize: 12)),
+                            ),
+                            ButtonSegment(
+                              value: _ScheduleViewMode.dayTable,
+                              icon: Icon(Icons.view_day_outlined, size: 16),
+                              label: Text('Day View', style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                          selected: {_viewMode},
+                          onSelectionChanged: (set) => setState(() => _viewMode = set.first),
+                          style: SegmentedButton.styleFrom(
+                            selectedBackgroundColor: _parentAccentSoft,
+                            selectedForegroundColor: _parentAccent,
+                            foregroundColor: AppColors.textSecondary,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.button)),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+
+                  // Child Switcher Tabs (if multiple children)
                   if (children.length > 1)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
@@ -87,6 +157,8 @@ class _ParentScheduleScreenState extends ConsumerState<ParentScheduleScreen> {
                         ),
                       ),
                     ),
+
+                  // Main Schedule Area
                   Expanded(
                     child: FutureBuilder<_ScheduleData>(
                       key: ValueKey('schedule-${selected.studentId}'),
@@ -100,100 +172,26 @@ class _ParentScheduleScreenState extends ConsumerState<ParentScheduleScreen> {
                         }
                         final data = snapshot.data!;
                         if (data.rows.isEmpty) {
-                          return Center(child: Text('No timetable set up yet for ${selected.fullName}.'));
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.event_busy, size: 48, color: AppColors.textSecondary),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'No timetable scheduled yet for ${selected.fullName}.',
+                                  style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          );
                         }
 
-                        final days = ['mon', 'tue', 'wed', 'thu', 'fri'];
-                        final dayLabels = {'mon': 'Mon', 'tue': 'Tue', 'wed': 'Wed', 'thu': 'Thu', 'fri': 'Fri'};
-                        final periods = data.rows.map((r) => r['period_number'] as int).toSet().toList()..sort();
-
-                        return ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                          itemCount: periods.length,
-                          itemBuilder: (context, i) {
-                            final period = periods[i];
-                            final periodRows = data.rows.where((r) => r['period_number'] == period).toList();
-
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: GlassCard(
-                                padding: const EdgeInsets.all(18),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: _parentAccentSoft,
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            'Period $period',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 13,
-                                              color: _parentAccent,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    ...days.map((day) {
-                                      final match = periodRows.where((r) => r['day'] == day).toList();
-                                      if (match.isEmpty) return const SizedBox.shrink();
-                                      final row = match.first;
-                                      return Padding(
-                                        padding: const EdgeInsets.only(bottom: 8),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.backgroundAlt,
-                                            borderRadius: BorderRadius.circular(AppRadii.input),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Container(
-                                                width: 44,
-                                                padding: const EdgeInsets.symmetric(vertical: 2),
-                                                alignment: Alignment.center,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: Text(
-                                                  dayLabels[day]!,
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: AppColors.textPrimary,
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Text(
-                                                  row['subject_name'] as String,
-                                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                                                ),
-                                              ),
-                                              Text(
-                                                row['teacher_name'] as String,
-                                                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    }),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        );
+                        if (_viewMode == _ScheduleViewMode.weeklyTable) {
+                          return _buildWeeklyTable(data);
+                        } else {
+                          return _buildDayTable(data);
+                        }
                       },
                     ),
                   ),
@@ -203,6 +201,404 @@ class _ParentScheduleScreenState extends ConsumerState<ParentScheduleScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. FULL WEEKLY TIMETABLE TABLE
+  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildWeeklyTable(_ScheduleData data) {
+    final periods = data.rows.map((r) => r['period_number'] as int).toSet().toList()..sort();
+
+    // Map: period -> (day -> schedule entry)
+    final Map<int, Map<String, Map<String, dynamic>>> grid = {};
+    for (final p in periods) {
+      grid[p] = {};
+    }
+    for (final row in data.rows) {
+      final p = row['period_number'] as int;
+      final d = (row['day'] as String).toLowerCase();
+      grid[p]?[d] = row;
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+      child: GlassCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Table Header Bar
+            Row(
+              children: [
+                const Icon(Icons.schedule, size: 18, color: _parentAccent),
+                const SizedBox(width: 8),
+                const Text(
+                  'Weekly Schedule Matrix',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _parentAccentSoft,
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                  ),
+                  child: Text(
+                    '${periods.length} Periods / Day',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _parentAccent),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Horizontally scrollable table container expanding to 100% full card width
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final tableWidth = constraints.maxWidth < 950 ? 950.0 : constraints.maxWidth;
+
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: tableWidth,
+                    child: Table(
+                      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                      columnWidths: const {
+                        0: FixedColumnWidth(140), // Period Col
+                        1: FlexColumnWidth(1),    // Mon
+                        2: FlexColumnWidth(1),    // Tue
+                        3: FlexColumnWidth(1),    // Wed
+                        4: FlexColumnWidth(1),    // Thu
+                        5: FlexColumnWidth(1),    // Fri
+                      },
+                      border: TableBorder.all(
+                        color: AppColors.glassBorder.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(12),
+                        width: 1,
+                      ),
+                      children: [
+                        // Header Row
+                        TableRow(
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFF3F4F6),
+                          ),
+                          children: [
+                            _buildHeaderCell('Period / Time'),
+                            ..._days.map((day) => _buildHeaderCell(_dayFullNames[day]!)),
+                          ],
+                        ),
+
+                        // Data Rows (one per period)
+                        ...periods.map((period) {
+                          final timeLabel = _periodTimes[period] ?? 'Period $period';
+                          return TableRow(
+                            decoration: BoxDecoration(
+                              color: period % 2 == 0 ? Colors.white : const Color(0xFFFAFAFA),
+                            ),
+                            children: [
+                              // Period indicator cell
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+                                alignment: Alignment.center,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: _parentAccentSoft,
+                                        borderRadius: BorderRadius.circular(AppRadii.pill),
+                                      ),
+                                      child: Text(
+                                        'Period $period',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _parentAccent),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      timeLabel,
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Day cells
+                              ..._days.map((day) {
+                                final entry = grid[period]?[day];
+                                if (entry == null) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 20),
+                                    alignment: Alignment.center,
+                                    child: const Text(
+                                      '—',
+                                      style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.w500),
+                                    ),
+                                  );
+                                }
+
+                                final subject = entry['subject_name'] as String;
+                                final teacher = entry['teacher_name'] as String;
+                                final subColor = _getSubjectColor(subject);
+
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                                  decoration: BoxDecoration(
+                                    color: subColor.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: subColor.withValues(alpha: 0.28)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 7,
+                                            height: 7,
+                                            decoration: BoxDecoration(color: subColor, shape: BoxShape.circle),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              subject,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w800,
+                                                color: subColor,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.person_outline, size: 12, color: AppColors.textSecondary.withValues(alpha: 0.8)),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              teacher,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.textSecondary,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderCell(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: AppColors.textPrimary,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2. DAY-BY-DAY TABLE VIEW
+  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildDayTable(_ScheduleData data) {
+    final dayRows = data.rows.where((r) => (r['day'] as String).toLowerCase() == _selectedDay).toList()
+      ..sort((a, b) => (a['period_number'] as int).compareTo(b['period_number'] as int));
+
+    return Column(
+      children: [
+        // Day selector chips
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+          child: Row(
+            children: _days.map((day) {
+              final isSel = _selectedDay == day;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: InkWell(
+                    onTap: () => setState(() => _selectedDay = day),
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isSel ? _parentAccent : AppColors.glassFill,
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
+                        border: Border.all(
+                          color: isSel ? _parentAccent : AppColors.glassBorder,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        _dayFullNames[day]!.substring(0, 3),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isSel ? Colors.white : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+
+        // Day Schedule Table Card
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+            child: GlassCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${_dayFullNames[_selectedDay]} Schedule',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      ),
+                      Text(
+                        '${dayRows.length} classes',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  if (dayRows.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text('No classes scheduled on this day.', style: TextStyle(color: AppColors.textSecondary)),
+                      ),
+                    )
+                  else
+                    Table(
+                      columnWidths: const {
+                        0: FixedColumnWidth(90),
+                        1: FlexColumnWidth(2),
+                        2: FlexColumnWidth(2),
+                      },
+                      border: TableBorder.all(
+                        color: AppColors.glassBorder.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      children: [
+                        TableRow(
+                          decoration: const BoxDecoration(color: Color(0xFFF9FAFB)),
+                          children: [
+                            _buildHeaderCell('Period'),
+                            _buildHeaderCell('Subject'),
+                            _buildHeaderCell('Teacher'),
+                          ],
+                        ),
+                        ...dayRows.map((row) {
+                          final period = row['period_number'] as int;
+                          final subject = row['subject_name'] as String;
+                          final teacher = row['teacher_name'] as String;
+                          final subColor = _getSubjectColor(subject);
+                          final time = _periodTimes[period] ?? '';
+
+                          return TableRow(
+                            decoration: BoxDecoration(
+                              color: period % 2 == 0 ? Colors.white : const Color(0xFFFAFAFA),
+                            ),
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                alignment: Alignment.center,
+                                child: Column(
+                                  children: [
+                                    Text('Period $period', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _parentAccent)),
+                                    if (time.isNotEmpty)
+                                      Text(time, style: const TextStyle(fontSize: 9, color: AppColors.textSecondary)),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                                alignment: Alignment.centerLeft,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(color: subColor, shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        subject,
+                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: subColor),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                                alignment: Alignment.centerLeft,
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.person_outline, size: 14, color: AppColors.textSecondary),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        teacher,
+                                        style: const TextStyle(fontSize: 12, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

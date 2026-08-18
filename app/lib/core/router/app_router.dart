@@ -23,6 +23,8 @@ import '../../features/dashboard/admin/offline_payment_screen.dart';
 import '../../features/dashboard/admin/fee_management_screen.dart';
 import '../../features/dashboard/admin/recent_payments_screen.dart';
 import '../../features/dashboard/admin/bank_reconciliation_screen.dart';
+import '../../features/dashboard/admin/student_enrollment_screen.dart';
+import '../../features/dashboard/admin/staff_attendance_screen.dart';
 import '../../features/dashboard/parent/waiver_requests_screen.dart';
 import '../../features/dashboard/teacher/teacher_summary_screen.dart';
 import '../../features/dashboard/teacher/teacher_attendance_screen.dart';
@@ -79,6 +81,7 @@ const _sharedRoutes = <_RouteDef>[
   _RouteDef('/admin/approvals/hr', _approvalsHr),
   _RouteDef('/admin/approvals/finance', _approvalsFinance),
   _RouteDef('/admin/payroll', _payroll),
+  _RouteDef('/admin/staff-attendance', _staffAttendance),
   _RouteDef('/admin/vendors', _vendors),
   _RouteDef('/admin/vendor-performance', _vendorPerf),
   _RouteDef('/admin/emi', _emi),
@@ -92,6 +95,7 @@ const _sharedRoutes = <_RouteDef>[
   _RouteDef('/admin/offline-payments', _offlinePayments),
   _RouteDef('/admin/recent-payments', _recentPayments),
   _RouteDef('/admin/bank-reconciliation', _bankReconciliation),
+  _RouteDef('/admin/enrollment', _enrollment),
 
   // Settings (all roles).
   _RouteDef('/settings', _settings),
@@ -144,10 +148,12 @@ Widget _parent(_, __) => const ParentOverviewScreen();
 Widget _timetable(_, __) => const TimetableGridScreen();
 Widget _omr(_, __) => const OmrUploadScreen();
 Widget _documents(_, __) => const DocumentReviewScreen();
+Widget _enrollment(_, __) => const StudentEnrollmentScreen();
 Widget _approvals(_, __) => const ApprovalQueueScreen();
 Widget _approvalsHr(_, __) => const ApprovalQueueScreen(filter: 'hr');
 Widget _approvalsFinance(_, __) => const ApprovalQueueScreen(filter: 'finance');
 Widget _payroll(_, __) => const PayrollScreen();
+Widget _staffAttendance(_, __) => const StaffAttendanceScreen();
 Widget _vendors(_, __) => const VendorProcurementScreen();
 Widget _vendorPerf(_, __) => const VendorPerformanceScreen();
 Widget _emi(_, __) => const EmiFinancingScreen();

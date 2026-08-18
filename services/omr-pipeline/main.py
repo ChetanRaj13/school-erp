@@ -178,6 +178,7 @@ async def scan_sheet(
     # --- Build records to insert ---
     records_to_insert = []
     per_student_breakdown = []
+    max_roster_roll = max(roster.keys()) if roster else 0
 
     for item in raw_results:
         roll_no = item["roll_no"]
@@ -193,6 +194,15 @@ async def scan_sheet(
             elif needs_review:
                 review_reason = "Bubble fill confidence is low -- verify manually"
         else:
+            # If this roll_no is outside the class's enrolled roster:
+            # Standard OMR forms have 40 pre-printed slots even if a class has 20-25 students.
+            # We only record attendance for students enrolled in the class roster.
+            # Skip unused/unmatched slots outside the roster if roster is populated.
+            if roster and roll_no > max_roster_roll:
+                continue
+            if item.get("status") is None:
+                continue
+
             student_id = None
             student_name = None
             needs_review = True
@@ -270,13 +280,14 @@ async def scan_sheet(
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"DB insert failed: {exc}")
 
+    total_enrolled = len(per_student_breakdown)
     present_count = sum(1 for r in per_student_breakdown if r["status"] == "present" and not r["needs_review"])
     absent_count = sum(1 for r in per_student_breakdown if r["status"] == "absent" and not r["needs_review"])
     review_count = sum(1 for r in per_student_breakdown if r["needs_review"])
 
     return {
         "summary": {
-            "total": len(raw_results),
+            "total": total_enrolled,
             "present": present_count,
             "absent": absent_count,
             "needs_review": review_count,
@@ -346,4 +357,39 @@ async def submit_manual_attendance(req: ManualAttendanceRequest):
         "date": att_date,
         "class_id": req.class_id,
     }
+
+
+class ResolveReviewRequest(BaseModel):
+    class_id: str
+    student_id: str
+    date: str
+    status: str  # 'present', 'absent', 'leave'
+
+
+@app.post("/attendance/resolve-review")
+async def resolve_review(req: ResolveReviewRequest):
+    if _supabase is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase not configured",
+        )
+    try:
+        resp = (
+            _supabase
+            .schema("attendance")
+            .table("records")
+            .update({
+                "status": req.status,
+                "needs_review": False,
+                "review_reason": None,
+            })
+            .eq("class_id", req.class_id)
+            .eq("student_id", req.student_id)
+            .eq("date", req.date)
+            .execute()
+        )
+        return {"status": "ok", "updated": len(resp.data or [])}
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to update review record: {exc}")
 

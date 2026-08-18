@@ -5,11 +5,15 @@ class ChildSummary {
   final double amountDue;
   final double amountPaid;
   final List<Map<String, dynamic>> attendanceRecords;
+  final Map<String, dynamic>? activeEmiPlan;
+  final List<Map<String, dynamic>> nextPendingInstallments;
 
   ChildSummary({
     required this.amountDue,
     required this.amountPaid,
     required this.attendanceRecords,
+    this.activeEmiPlan,
+    this.nextPendingInstallments = const [],
   });
 }
 
@@ -108,11 +112,56 @@ class StudentReportCard {
 final childSummaryProvider = FutureProvider.family.autoDispose<ChildSummary, String>((ref, studentId) async {
   final client = ref.watch(supabaseClientProvider);
   
-  final invoices = await client.schema('finance').from('invoices').select('amount_due, amount_paid').eq('student_id', studentId);
+  final invoices = await client.schema('finance').from('invoices').select('id, amount_due, amount_paid').eq('student_id', studentId);
   double due = 0, paid = 0;
-  for (final row in invoices as List) {
+  final invList = List<Map<String, dynamic>>.from(invoices as List);
+  for (final row in invList) {
     due += (row['amount_due'] as num).toDouble();
     paid += (row['amount_paid'] as num).toDouble();
+  }
+
+  Map<String, dynamic>? activePlan;
+  List<Map<String, dynamic>> pendingInsts = [];
+  final invIds = invList.map((i) => i['id'] as String).toList();
+  if (invIds.isNotEmpty) {
+    try {
+      final plans = await client
+          .schema('finance')
+          .from('payment_plans')
+          .select('*')
+          .inFilter('invoice_id', invIds)
+          .eq('status', 'active')
+          .order('created_at', ascending: false)
+          .limit(1);
+      if ((plans as List).isNotEmpty) {
+        activePlan = Map<String, dynamic>.from(plans.first);
+        final insts = await client
+            .schema('finance')
+            .from('payment_plan_installments')
+            .select('*')
+            .eq('payment_plan_id', activePlan['id'])
+            .order('installment_number');
+
+        final matchingInv = invList.firstWhere(
+          (i) => i['id'] == activePlan!['invoice_id'],
+          orElse: () => <String, dynamic>{'amount_paid': 0},
+        );
+        final amountPaidOnInvoice = (matchingInv['amount_paid'] as num?)?.toDouble() ?? 0.0;
+
+        double cumulative = 0.0;
+        for (final inst in insts as List) {
+          final copy = Map<String, dynamic>.from(inst);
+          final instAmt = (copy['amount'] as num?)?.toDouble() ?? 0.0;
+          cumulative += instAmt;
+          if (amountPaidOnInvoice >= (cumulative - 1.0)) {
+            copy['status'] = 'paid';
+          } else {
+            copy['status'] = 'pending';
+            pendingInsts.add(copy);
+          }
+        }
+      }
+    } catch (_) {}
   }
   
   final attendance = await client.schema('attendance').from('records').select('date, status').eq('student_id', studentId).order('date', ascending: false).limit(10);
@@ -121,6 +170,8 @@ final childSummaryProvider = FutureProvider.family.autoDispose<ChildSummary, Str
     amountDue: due,
     amountPaid: paid,
     attendanceRecords: List<Map<String, dynamic>>.from(attendance as List),
+    activeEmiPlan: activePlan,
+    nextPendingInstallments: pendingInsts,
   );
 });
 

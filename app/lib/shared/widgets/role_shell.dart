@@ -9,34 +9,17 @@ import '../../core/router/nav_config.dart';
 import '../../core/theme/app_theme.dart';
 import 'glass_card.dart';
 
-/// The persistent navigation chrome shared by every authenticated role screen.
+/// The responsive application shell wrapping every role dashboard.
 ///
-/// Replaces the old "one long scrolling page per role" pattern: instead of a dashboard
-/// page cramming ~14 Quick Link tiles into a single scroll view, the role's navigation
-/// destinations live here (sidebar on wide screens, drawer + bottom-nav on narrow), and
-/// each destination renders inside this shell via a go_router StatefulShellRoute.
-///
-/// Navigation is PATH-BASED (context.go(route)), not branch-index-based. This matters
-/// because the operational /admin/* routes are shared by both principal and admin — a
-/// single shared shell builds one branch per route path, while each role's sidebar is a
-/// differently-grouped VIEW over those same branches. Matching by current location (not
-/// shell.currentIndex) keeps the active highlight correct regardless of which role's
-/// grouping the sidebar uses.
-///
-/// The shell does NOT wrap children in its own backdrop — each route screen keeps its
-/// own Scaffold + WarmBackdrop (nested Scaffolds are valid). The shell only owns the
-/// sidebar/drawer/bottom-nav + a mobile app bar, so leaf screens keep their existing
-/// look minus the now-redundant sign-out button (it lives here instead).
+/// On screens >= 840px, renders a persistent left sidebar with the role's
+/// navigation items, school branding, and sign-out. On smaller screens, renders
+/// an app bar with a hamburger-triggered drawer plus a bottom navigation bar
+/// for roles with <= 5 destinations.
 class RoleShell extends ConsumerWidget {
-  const RoleShell({
-    super.key,
-    required this.navigationShell,
-  });
+  const RoleShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  // Wide-screen breakpoint for the persistent sidebar. Below this, the sidebar becomes
-  // a Drawer and a bottom NavigationBar appears under the content.
   static const _wideBreakpoint = 840.0;
 
   @override
@@ -45,10 +28,11 @@ class RoleShell extends ConsumerWidget {
     final nav = navFor(role);
     final location = GoRouterState.of(context).matchedLocation;
     final isWide = MediaQuery.of(context).size.width >= _wideBreakpoint;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (isWide) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Row(
           children: [
             _Sidebar(
@@ -63,10 +47,9 @@ class RoleShell extends ConsumerWidget {
       );
     }
 
-    // Narrow: app bar + drawer (full sectioned list) + a bottom nav for the short
-    // roles (<=5 destinations). Long roles (principal/admin: 14+) use the drawer only.
+    // Narrow: app bar + drawer (full sectioned list) + bottom nav for short roles
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(role.label),
         actions: [
@@ -75,7 +58,7 @@ class RoleShell extends ConsumerWidget {
             child: GlassChip(
               label: role.label,
               icon: Icons.verified_user_outlined,
-              color: role.accentOnLight,
+              color: isDark ? role.accentFill : role.accentOnLight,
             ),
           ),
           IconButton(
@@ -86,6 +69,7 @@ class RoleShell extends ConsumerWidget {
         ],
       ),
       drawer: Drawer(
+        backgroundColor: isDark ? const Color(0xFF0F172A) : null,
         child: _Sidebar(
           nav: nav,
           role: role,
@@ -101,7 +85,8 @@ class RoleShell extends ConsumerWidget {
       bottomNavigationBar: nav.flat.length <= 5
           ? NavigationBar(
               selectedIndex: _flatIndexFor(nav, location),
-              indicatorColor: role.accentSoft,
+              indicatorColor: isDark ? role.accentFill.withValues(alpha: 0.25) : role.accentSoft,
+              backgroundColor: isDark ? const Color(0xFF0F172A) : null,
               onDestinationSelected: (i) {
                 final dest = nav.flat[i];
                 _navigateTo(context, dest.route);
@@ -110,7 +95,7 @@ class RoleShell extends ConsumerWidget {
                 for (final d in nav.flat)
                   NavigationDestination(
                     icon: Icon(d.icon),
-                    selectedIcon: Icon(d.icon, color: role.accentOnLight),
+                    selectedIcon: Icon(d.icon, color: isDark ? role.accentFill : role.accentOnLight),
                     label: d.label,
                   ),
               ],
@@ -120,23 +105,16 @@ class RoleShell extends ConsumerWidget {
   }
 
   void _navigateTo(BuildContext context, String route) {
-    // context.go within a StatefulShellRoute switches the active branch to whichever
-    // branch holds `route` while keeping the shell (and other branches' state) alive.
     context.go(route);
   }
 
-  /// The active destination's index within the role's flat nav list, or 0 if the
-  /// current location isn't one of this role's destinations (e.g. deep-linked). Used
-  /// only for the mobile bottom-nav highlight.
   int _flatIndexFor(RoleNav nav, String location) {
     final i = nav.flat.indexWhere((d) => location == d.route);
     return i < 0 ? 0 : i;
   }
 }
 
-/// The wide-screen persistent sidebar: a glass panel with a role header, sectioned
-/// navigation items, and a sign-out at the bottom. `asDrawerList` renders the same
-/// content as a plain scrollable list (no glass card chrome) for use inside a Drawer.
+/// The wide-screen persistent sidebar.
 class _Sidebar extends ConsumerWidget {
   const _Sidebar({
     required this.nav,
@@ -152,24 +130,29 @@ class _Sidebar extends ConsumerWidget {
   final ValueChanged<String> onSelected;
   final bool asDrawerList;
 
-  /// Filters sections for admin workspace: HR shows HR-only items, Finance
-  /// shows Finance-only items. Operations is always included. The Overview
-  /// section (first section, no header) is replaced with the workspace-
-  /// specific overview route.
   List<NavSection> _adminSections(AdminWorkspace ws) {
     final sections = <NavSection>[];
     for (final section in nav.sections) {
-      // Skip the headerless Overview section — we replace it below.
       if (section.header == null) continue;
 
       if (section.header == 'Operations') {
-        // Operations always visible in both workspaces.
-        sections.add(section);
+        if (ws == AdminWorkspace.finance) {
+          // Remove Student Admission, OMR Attendance, and Document Review from the Finance workspace
+          final financeOpsDests = section.destinations.where((d) =>
+            d.route != '/admin/enrollment' &&
+            d.route != '/admin/omr' &&
+            d.route != '/admin/documents'
+          ).toList();
+          if (financeOpsDests.isNotEmpty) {
+            sections.add(NavSection(header: section.header, destinations: financeOpsDests));
+          }
+        } else {
+          sections.add(section);
+        }
         continue;
       }
 
       if (section.header == 'HR' || section.header == 'Finance') {
-        // Include the workspace-specific section.
         if ((ws == AdminWorkspace.hr && section.header == 'HR') ||
             (ws == AdminWorkspace.finance && section.header == 'Finance')) {
           sections.add(section);
@@ -177,11 +160,9 @@ class _Sidebar extends ConsumerWidget {
         continue;
       }
 
-      // Communication / other sections: always visible.
       sections.add(section);
     }
 
-    // Prepend the workspace-specific overview.
     final overviewDest = ws == AdminWorkspace.hr
         ? const NavDestination(
             icon: Icons.space_dashboard_outlined,
@@ -195,19 +176,27 @@ class _Sidebar extends ConsumerWidget {
           );
     sections.insert(0, NavSection(destinations: [overviewDest]));
 
+    // Always include Settings at the bottom of the Admin navigation
+    sections.add(const NavSection(destinations: [
+      NavDestination(
+        icon: Icons.settings_outlined,
+        label: 'Settings',
+        route: '/settings',
+      ),
+    ]));
+
     return sections;
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // For admin role, filter sections by workspace; otherwise use all sections.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final effectiveSections = role == UserRole.admin
         ? _adminSections(ref.watch(adminWorkspaceProvider))
         : nav.sections;
 
     final items = <Widget>[];
 
-    // Admin workspace toggle (only in sidebar, not drawer list — drawer gets it too).
     if (role == UserRole.admin && !asDrawerList) {
       items.add(_WorkspaceToggle(role: role));
     }
@@ -218,10 +207,10 @@ class _Sidebar extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
           child: Text(
             section.header!.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: AppColors.textSecondary,
+              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
               letterSpacing: 1.2,
             ),
           ),
@@ -240,7 +229,6 @@ class _Sidebar extends ConsumerWidget {
     }
 
     if (asDrawerList) {
-      // Build drawer items with workspace toggle for admin.
       final drawerItems = <Widget>[];
       if (role == UserRole.admin) {
         drawerItems.add(_WorkspaceToggle(role: role));
@@ -248,29 +236,38 @@ class _Sidebar extends ConsumerWidget {
       drawerItems.addAll(items);
 
       return ListView(
-        padding: EdgeInsets.zero,
+        padding: const EdgeInsets.symmetric(vertical: 24),
         children: [
-          DrawerHeader(
-            decoration: BoxDecoration(color: role.accentFill),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Row(
               children: [
-                const Icon(Icons.school_rounded, color: Colors.white, size: 32),
-                const SizedBox(height: 8),
-                Text(role.label,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700)),
+                Icon(Icons.school_rounded, color: isDark ? role.accentFill : role.accentOnLight, size: 28),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('School ERP',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary)),
+                    Text(role.label,
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary)),
+                  ],
+                ),
               ],
             ),
           ),
+          const Divider(),
           ...drawerItems,
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout_rounded, color: AppColors.error),
-            title: const Text('Sign out'),
+            title: Text('Sign out',
+                style: TextStyle(color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary)),
             onTap: () => ref.read(supabaseClientProvider).auth.signOut(),
           ),
         ],
@@ -279,9 +276,9 @@ class _Sidebar extends ConsumerWidget {
 
     return Container(
       width: 264,
-      decoration: const BoxDecoration(
-        color: AppColors.backgroundAlt,
-        border: Border(right: BorderSide(color: AppColors.glassBorder, width: 1)),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : AppColors.backgroundAlt,
+        border: Border(right: BorderSide(color: isDark ? AppColors.glassBorderDark : AppColors.glassBorder, width: 1)),
       ),
       child: SafeArea(
         child: Column(
@@ -290,19 +287,20 @@ class _Sidebar extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
               child: Row(
                 children: [
-                  Icon(Icons.school_rounded, color: role.accentOnLight, size: 26),
+                  Icon(Icons.school_rounded, color: isDark ? role.accentFill : role.accentOnLight, size: 26),
                   const SizedBox(width: 10),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('School ERP',
+                      Text('School ERP',
                           style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary)),
+                              color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary)),
                       Text(role.label,
-                          style: const TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary)),
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary)),
                     ],
                   ),
                 ],
@@ -321,13 +319,14 @@ class _Sidebar extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(AppRadii.button),
                 child: GlassCard(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.logout_rounded, color: AppColors.error, size: 20),
-                      SizedBox(width: 12),
+                      const Icon(Icons.logout_rounded, color: AppColors.error, size: 20),
+                      const SizedBox(width: 12),
                       Text('Sign out',
                           style: TextStyle(
-                              fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary)),
                     ],
                   ),
                 ),
@@ -340,7 +339,7 @@ class _Sidebar extends ConsumerWidget {
   }
 }
 
-/// A single sidebar navigation tile. Selected state uses a role-accent soft fill + role accent icon.
+/// A single sidebar navigation tile.
 class _NavTile extends StatelessWidget {
   const _NavTile({
     required this.icon,
@@ -360,17 +359,24 @@ class _NavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (compact) {
       return ListTile(
         leading: Icon(icon,
-            color: selected ? role.accentOnLight : AppColors.textSecondary, size: 22),
+            color: selected
+                ? (isDark ? role.accentFill : role.accentOnLight)
+                : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondary),
+            size: 22),
         title: Text(label,
             style: TextStyle(
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+              color: selected
+                  ? (isDark ? AppColors.textPrimaryDark : AppColors.textPrimary)
+                  : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondary),
             )),
         selected: selected,
-        selectedTileColor: role.accentSoft,
+        selectedTileColor: isDark ? role.accentFill.withValues(alpha: 0.22) : role.accentSoft,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.input)),
         onTap: onTap,
       );
@@ -384,12 +390,15 @@ class _NavTile extends StatelessWidget {
         child: GlassCard(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           fillColor: selected
-              ? role.accentSoft
-              : AppColors.glassFill,
+              ? (isDark ? role.accentFill.withValues(alpha: 0.22) : role.accentSoft)
+              : (isDark ? const Color(0xFF1E293B) : AppColors.glassFill),
           child: Row(
             children: [
               Icon(icon,
-                  color: selected ? role.accentOnLight : AppColors.textSecondary, size: 20),
+                  color: selected
+                      ? (isDark ? role.accentFill : role.accentOnLight)
+                      : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondary),
+                  size: 20),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -397,7 +406,9 @@ class _NavTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+                    color: selected
+                        ? (isDark ? AppColors.textPrimaryDark : AppColors.textPrimary)
+                        : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondary),
                   ),
                 ),
               ),
@@ -409,8 +420,7 @@ class _NavTile extends StatelessWidget {
   }
 }
 
-/// Admin-only workspace toggle: HR / Finance. Rendered at the top of the admin
-/// sidebar to switch between the two workspaces.
+/// Admin-only workspace toggle: HR / Finance.
 class _WorkspaceToggle extends ConsumerWidget {
   const _WorkspaceToggle({this.role = UserRole.admin});
 
@@ -419,6 +429,8 @@ class _WorkspaceToggle extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(adminWorkspaceProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
       child: SegmentedButton<AdminWorkspace>(
@@ -445,9 +457,9 @@ class _WorkspaceToggle extends ConsumerWidget {
         },
         style: SegmentedButton.styleFrom(
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          selectedBackgroundColor: role.accentSoft,
-          selectedForegroundColor: role.accentOnLight,
-          foregroundColor: AppColors.textSecondary,
+          selectedBackgroundColor: isDark ? role.accentFill.withValues(alpha: 0.3) : role.accentSoft,
+          selectedForegroundColor: isDark ? role.accentFill : role.accentOnLight,
+          foregroundColor: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
           visualDensity: VisualDensity.compact,
         ),
       ),

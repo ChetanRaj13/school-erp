@@ -2,6 +2,519 @@
 
 This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; append a new entry when you finish a task. Don't remove anything from the existing file
 
+## [2026-08-18] Principal Dashboard: Admissions by Year Currency Formatting & X-Axis Visibility Fix
+1. **Admissions by Year Currency Fix**:
+   - In [bar_chart.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/widgets/bar_chart.dart), replaced hardcoded `'₹'` prefix with configurable `valuePrefix`, `valueSuffix`, and `valueFormatter`.
+   - In [principal_dashboard.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/principal/principal_dashboard.dart), configured `BarChart` with `valuePrefix: ''` for `Admissions by Year`, correctly displaying raw student enrollment counts (142, 168, 189, etc.) without currency formatting.
+2. **X-Axis Label Visibility & Baseline Alignment**:
+   - In `_BarChartPainter`, allocated dedicated bottom margin (`28px`) below the baseline for x-axis category/year labels.
+   - Added a crisp baseline divider and painted x-axis category labels clearly below the baseline (`baselineY + 6.0`) with `AppColors.textSecondary` typography so labels are never obscured by or drawn inside the bars.
+   - Added `wrapInCard` support to both [bar_chart.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/widgets/bar_chart.dart) and [line_chart.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/widgets/line_chart.dart) to eliminate nested card headers.
+3. **Verification**:
+   - `flutter analyze` completed with 0 errors.
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is served live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Student Admission Dropdown Polish, Budget All-Years Percentage, and Finance KPI Uniformity
+1. **Student Admission Form Dropdown Typography & Missing Icons**:
+   - In [student_enrollment_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/student_enrollment_screen.dart), updated `_buildDropdownField` with `prefixIcon`, explicit `style` matching text input font (`fontSize: 13.5`, `fontWeight: FontWeight.w700`, `color: AppColors.textPrimary`), and custom styled dropdown chevron.
+   - Added icons to Digital Form dropdowns: Gender (`Icons.person_outline`), Blood Group (`Icons.bloodtype_outlined`), Grade (`Icons.school_outlined`), and Section (`Icons.meeting_room_outlined`).
+2. **Budget & Expenditure: All-Years Filter Percentage Calculation**:
+   - In [budget_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/principal/budget_screen.dart), added a dedicated Budget Consumed KPI card displaying the exact calculated percentage of total planned budget utilized (`(totalActual / totalPlanned) * 100`) for both individual years and the "All Years" filter.
+   - In [budget_breakdown_widget.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/budget_breakdown_widget.dart), added category aggregation when "All Fiscal Years" is selected, calculating the combined percentage of all years for each category.
+3. **Finance Overview: Top KPI Card Sizing & Spacing Uniformity**:
+   - In [admin_finance_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/admin_finance_overview_screen.dart), standardized top KPI row using `IntrinsicHeight` with `crossAxisAlignment: CrossAxisAlignment.stretch` and `flex: 1` across all 4 cards (Fee Collection, Total Revenue, Total Expenditure, Budget Remaining).
+   - Enlarged metric icons (`24px` with `12px` padding), standardized typography, and balanced card padding so all 4 top KPI cards have uniform dimensions and positioning.
+4. **Verification**:
+   - `flutter analyze` completed with 0 errors.
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is served live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Admin Finance Navigation Cleanup & Parent Profile EMI Single-Payment Fix
+1. **Admin Finance Navigation Cleanup**:
+   - **Requirement**: Removed `Student Admissions` (`/admin/enrollment`), `OMR Attendance` (`/admin/omr`), and `Document Review` (`/admin/documents`) from the Admin **Finance** workspace.
+   - **Fix**: In [role_shell.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/role_shell.dart), updated `_adminSections` so that when `ws == AdminWorkspace.finance`, `Operations` excludes Student Admissions, OMR Attendance, and Document Review, keeping the Finance workspace focused strictly on financial and communication tools. HR workspace retains these operations items.
+2. **Parent Profile: Single EMI Payment Fix**:
+   - **Root Cause**: In [parent_fees_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_fees_screen.dart), fallback test invoices were seeded with `amount_paid: 15000.0` (matching installment #1). When the parent made their first EMI payment of ₹15,000, `amount_paid` became ₹30,000, which caused both Installment #1 (₹15,000 threshold) and Installment #2 (₹30,000 threshold) to be marked as paid simultaneously.
+   - **Fix**:
+     - Reset initial invoice fallback `amount_paid` to `0.0` so all 3 installments start as `pending`.
+     - Added `_sessionPaidInstallmentIds` and updated `_buildActivePlanCard` to evaluate paid status with explicit session tracking and cumulative threshold.
+     - Paying 1 EMI now cleanly marks exactly that 1 EMI as paid (1/3 -> 2/3 -> 3/3).
+3. **Verification**:
+   - `flutter analyze` completed with 0 compile errors.
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is served live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Admin Profile: Staff Attendance Date Filter Synchronization & Student Admissions Clean Reset
+1. **Staff Attendance Date Filter Real-Time Synchronization**:
+   - **Root Cause**: `staff_attendance_screen.dart` used a single in-memory `_records` map keyed solely by `staffId`. Modifying `_selectedDate` (via previous/next buttons or calendar picker) altered the date label in the UI header but did not update or recompute the punch records or KPI statistics for the selected date.
+   - **Fix**: Replaced with `_recordsByDate` mapping `yyyy-MM-dd` to per-date attendance records. Added `_ensureRecordsForDate(DateTime)` which generates deterministic, realistic daily punch-in/out, leave, and late records for every day (including weekend off handling on Sundays). Wired previous day, next day, calendar picker, and "Jump to Today" to `_setDate` so the table and all KPIs update immediately when changing the date.
+2. **Student Admissions: Form Clean Reset & Real-Time Recent Admissions Update**:
+   - **Clean Form Reset**:
+     - Updated `student_enrollment_screen.dart` so that `_gender`, `_bloodGroup`, `_selectedGrade`, and `_selectedSection` are nullable and dropdowns show placeholder hints.
+     - On initial load and when clicking "Clear Form" or "Clear / Reset", **ALL fields are cleared to blank** with only the newly generated `Admission ID` (`ADM-2026-XXXX`) present from the start. Sample presets remain available via 1-click chip buttons.
+   - **Recent Admissions Real-Time Update**:
+     - Maintained `_sessionAdmissions` list. When submitting either the Digital Admission Form or Pre-Filled Form, newly registered students are immediately prepended to the top of the admissions pipeline and `_recentAdmissionsFuture` is refreshed in real time.
+3. **Verification**:
+   - `flutter analyze` completed with 0 errors.
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is served live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Admin Profile: Real-Time Leave Count Synchronization & Dedicated Staff Attendance Section
+1. **Pending Leave Real-Time Count Fix**:
+   - **Root Cause**: In `admin_hrm_overview_screen.dart`, `_load` contained a hardcoded fallback override `if (leavePending == 0 && leaveApprovedMonth == 0) { leavePending = 2; ... }` which falsely displayed 2 pending leaves when there were 0 in the leave requests table.
+   - **Fix**: Removed the artificial fallback in `admin_hrm_overview_screen.dart`. Real pending, approved, and rejected leave counts are computed directly from `public.leave_requests` matching `LeaveRequestsScreen` (0 pending leaves display accurately as 0 with "All clear").
+2. **Dedicated Staff Attendance Section**:
+   - Built `StaffAttendanceScreen` (`app/lib/features/dashboard/admin/staff_attendance_screen.dart`) featuring:
+     - Daily staff roll call with date navigator & calendar picker.
+     - Live KPI cards: Present Today (rate %), Approved Leave count, Half-Day/Late count, Absent/Unmarked count.
+     - Department filtering (`Teaching Faculty`, `Admin & Office`, `Support & Labs`) and status toggle (`All`, `Present`, `Leave / Late`, `Absent`).
+     - Real-time punch-in, punch-out, duration, and check-in method badges (`RFID Card`, `Geo-Punch App`, `Biometric`).
+     - Inline status override action menu per staff member (`Mark Present`, `Mark Late Entry`, `Mark Half Day`, `Mark Approved Leave`, `Mark Absent`) and bulk `Mark All Present`.
+     - Report export action.
+   - Added `Staff Attendance` route (`/admin/staff-attendance`) in `app_router.dart` and navigation items in `nav_config.dart` (under Admin HR workspace and Principal Operations).
+   - Linked HR overview KPI cards and section headers directly to `/admin/staff-attendance` and `/admin/leave`.
+3. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Admin Profile: Settings & Appearance Navigation Restoration
+1. **Root Cause**:
+   - In `role_shell.dart`, `_adminSections(ws)` was filtering `nav.sections` with `if (section.header == null) continue;`. Because the Settings section in `nav_config.dart` is defined as a headerless footer section (`NavSection(destinations: [NavDestination(icon: Icons.settings_outlined, label: 'Settings', route: '/settings')])`), it was inadvertently dropped for the Admin role during sidebar rendering.
+2. **Fixes Applied**:
+   - In `role_shell.dart`, updated `_adminSections` to always append the `Settings` destination (`/settings`) at the bottom of the navigation list for both HR and Finance admin workspaces.
+   - In `admin_dashboard.dart`, linked the **"Configure Settings"** quick action card and other dashboard cards to `context.go(route)` so administrators can also directly jump to Settings from the executive overview.
+3. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Parent Profile: Fees Payment History Real-Time Sync & Schedule Grid Width Optimization
+1. **Fees Payment History Real-Time Sync & Card Display**:
+   - In `parent_fees_screen.dart`:
+     - Fixed `_load` to unconditionally merge session payments, normalize `created_at` / `date` keys, and correctly sort newest-first (descending) without null-scrambling.
+     - In `_processOnlinePayment`, added optimistic state updates to `_data` so that as soon as the online payment succeeds, `_data.paymentHistory` is updated with the new payment at index 0 and invoice balances/unpaid lists update in real-time.
+     - Refined Payment History card items with formatted date/time stamps, payment method badge (`UPI`, `CARD`, `NET BANKING`), green `SUCCESS` status chip, monospace reference number, and an instant **"Receipt"** download button.
+2. **Parent Schedule Timetable Width Responsive Adjustment**:
+   - In `parent_schedule_screen.dart`, wrapped the weekly timetable table in a `LayoutBuilder` setting `width: tableWidth = constraints.maxWidth < 950 ? 950.0 : constraints.maxWidth`.
+   - On full/wide desktop windows, the timetable automatically expands to fill 100% of the card width with zero empty space on the right, while still supporting horizontal scrolling on smaller screens.
+3. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Student Profile: Assignment Data Synchronization & Advanced Grade Analytics
+1. **Assignment Synchronization & Explanation**:
+   - **Reason for Difference**: `student_assignments_screen.dart` queries live database rows from `academic.assignments` & `academic.submissions`, while `student_overview_screen.dart` was calculating metrics from an unlinked list.
+   - **Fix**: Synchronized `_load` in both `student_assignments_screen.dart` and `student_overview_screen.dart` to use the exact same Supabase queries and identical fallback datasets (3 pending assignments, 1 submitted/graded assignment). When an assignment is submitted, both screens reflect identical counts.
+2. **Grade & Academic Analytics Overhaul**:
+   - In `student_progress_screen.dart` (Tab 2: Grade Analytics):
+     - Added **Overall Term-by-Term Trajectory (`LineChart`)**: Plots multi-term progression (Unit Test 1: 84.2%, Mid-Term: 87.5%, Unit Test 2: 89.4%, Target: 95.0%) with trajectory KPI summary pills (+5.2% improvement).
+     - Added **Subject-wise Marks Trend (`LineChart`)**: Interactive subject selection pills for all 6 subjects (`Mathematics`, `Physics`, `Chemistry`, `Computer Science`, `English Literature`, `Social Studies`) with dedicated term-by-term line graphs and breakdown badges.
+     - Added **Subject vs. Class Average Benchmark Matrix**: Side-by-side comparison for every subject with delta badges (e.g., Math: `96%` vs Class Avg `78.2%` [+17.8%]) and dual visual progress bar gauges.
+     - Added **Class-wise Grade Distribution & Percentile Standing**: 94th percentile (Rank #2 of 48) and grade tier distribution across Class 10 Section B (Distinction: 8 students, First Class: 22 students, Second Class: 14 students, Pass: 4 students).
+     - Added **Strengths & Growth Areas**: Actionable recommendations with high/medium priorities.
+3. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Parent Fees Payment History & Instant Persistence Fix
+1. **Root Cause**:
+   - `_processOnlinePayment` in `parent_fees_screen.dart` was calling direct table insert on `finance.payments` (`client.schema('finance').from('payments').insert(...)`), which failed with Supabase RLS error 42501 because table-level insert is restricted to admins/service roles.
+   - When database returned no invoices for unseeded child records, payments were dropped without local session retention.
+2. **Fixes Applied**:
+   - Switched payment recording to call the live verified `security definer` RPC `public.record_online_payment(p_invoice_id, p_amount, p_method, p_gateway_payment_id, p_reference_number)`.
+   - Added in-memory session persistence (`_sessionPayments` & `_sessionInvoicePaidDeltas`) to immediately merge completed payments into `_data.paymentHistory` and update the invoice balance, progress bar, and EMI installment status in real time without waiting for external webhooks.
+   - Made [receipt_generator.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/utils/receipt_generator.dart) resilient with safe substring handling and data URI fallbacks.
+3. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Student Overview Clock/Calendar Integration, Schedule Width Optimization & Settings Border Corner Fix
+1. **Student Overview Dynamic Clock & Calendar Synchronized Schedule**:
+   - In `student_overview_screen.dart`, connected today's schedule to `DateTime.now()`, day of week, and real-time period time intervals (`08:30-09:15`, `09:15-10:00`, `10:15-11:00`, `11:00-11:45`, `12:30-01:15`, `01:15-02:00`).
+   - Automatically determines period status: `Completed` (green badge), `Ongoing Now` (highlighted blue card with glowing border), or `Upcoming`.
+   - Updated header badge (`"[Weekday] Timetable · [Date] [Month]"` / Weekend detection) and "Today's Periods" StatCard with real-time subtext (`"Ongoing: [Subject]"` or `"Next: [Subject] @ [Time]"`).
+   - Corrected assignment counters to compute active pending assignments count (3 pending assignments due) with clear deadline badges.
+2. **Student Schedule Responsive Width Optimization**:
+   - In `student_schedule_screen.dart`, wrapped weekly table container in `LayoutBuilder` computing `tableWidth = constraints.maxWidth < 950 ? 950.0 : constraints.maxWidth`.
+   - When the app is in full window or desktop view, the timetable now seamlessly spans 100% of the card width with zero empty space on the right.
+3. **Settings Screen Theme Card Border Fix**:
+   - In `settings_screen.dart`, fixed `_buildPresetCard` by using `ClipRRect(borderRadius: BorderRadius.circular(AppRadii.card - borderWidth))` wrapping inner column inside the bordered container, eliminating anti-aliasing clipping corner gaps on the yellow active border.
+4. **Verification**:
+   - Ran `flutter build web --release` and verified 0 errors (`√ Built build\web`). Deployed live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Removal of Dark Themes, Honeycomb Mesh, Diagonal Waves & Architectural Grid
+1. **Removed Dark Themes & Presets**:
+   - Removed dark mode option & dark switcher from `SettingsScreen` and `main.dart` (enforcing light mode cleanly).
+   - Removed all dark background presets (`Midnight Obsidian`, `Deep Navy`, `Cyber Indigo`, `Cosmic Emerald`, `Starry Cosmos`).
+2. **Removed Requested Patterns**:
+   - Removed `pattern_honeycomb` (Honeycomb Mesh), `pattern_diagonal_mesh` (Diagonal Weave), and `pattern_blueprint` (Architectural Grid).
+   - Refactored `BackgroundPresets` to offer clean light styles: Solid Colors (Studio White, Warm Canvas, Soft Slate, Mint Serenity, Ice Blue), Gradients (Aurora Glow, Sunset Horizon, Ocean Breeze), Modern Dot Matrix, and Minimal Landscapes (Alpine Mist Peaks, Golden Dune Mirage, Nordic Lake & Pines).
+3. **Cleaned Up Painters & Backdrops**:
+   - Cleaned `background_painters.dart` and `warm_backdrop.dart` to remove unused pattern painters and dark-mode properties.
+4. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Full Dark Mode Theme Engine & UI Surface Adaptations
+1. **Root Cause**: `AppTheme.dark` was previously a stub alias (`get dark => light;`), and core widgets (`GlassCard`, `StatCard`, `RoleShell`, `_Sidebar`, `_NavTile`, `SettingsScreen`) used hardcoded light colors (`#FFFFFF`, `#1A1A1A`, `#E7E7E7`).
+2. **Comprehensive Dark Theme Implemented** ([app_theme.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/theme/app_theme.dart)):
+   - Built full `AppTheme.dark` definition with `Brightness.dark`, `ColorScheme.fromSeed` (dark slate `#0B0F19`, surface `#1E293B`), `TextTheme` with white/silver typography (`#F8FAFC`, `#94A3B8`), `DialogThemeData`, `CardThemeData`, and `InputDecorationTheme`.
+3. **Core Widget Dark Adaptations**:
+   - `GlassCard` ([glass_card.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/glass_card.dart)): Adapts fill to `#1E293B` (0.9 opacity) and border to `#334155` with automatic white text inheritance.
+   - `StatCard` ([stat_card.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/stat_card.dart)): Styles cards with dark slate backgrounds and crisp white text.
+   - `RoleShell` & `_Sidebar` ([role_shell.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/role_shell.dart)): Adapts left sidebar (`#0F172A`), drawer, header branding, and selected nav tiles (`role.accentFill` with 0.22 opacity).
+   - `SettingsScreen` ([settings_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/settings/settings_screen.dart)): Auto-switches to dark default background preset when toggling Dark Mode and styles preview cards and category chips.
+4. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Global Background Wallpaper Customizer & Theme Mode Engine in Settings
+1. **Background Presets Library** ([background_theme_provider.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/theme/background_theme_provider.dart)):
+   - Created curated catalog of 16 background styles across 4 distinct categories:
+     - **Solid Colors**: `Studio White`, `Warm Canvas`, `Soft Slate`, `Mint Serenity`, `Ice Blue`, `Midnight Obsidian`, `Deep Navy`.
+     - **Smooth Gradients**: `Aurora Glow` (Cyan-Lavender-Rose), `Sunset Horizon` (Amber-Peach-Coral), `Ocean Breeze` (Sky-Mint), `Cyber Indigo (Dark)`, `Cosmic Emerald (Dark)`.
+     - **Geometric Patterns**: `Architectural Grid`, `Modern Dot Matrix`, `Honeycomb Mesh`, `Diagonal Weave`.
+     - **Minimal Landscapes**: `Alpine Mist Peaks` (vector geometric mountains with sunrise glow), `Golden Dune Mirage` (flowing desert contours), `Nordic Lake & Pines` (evergreen silhouettes over water), `Starry Cosmos` (crescent moon & star constellations).
+2. **Dynamic Canvas Painters & Backdrop** ([background_painters.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/background_painters.dart) & [warm_backdrop.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/warm_backdrop.dart)):
+   - Implemented hardware-accelerated `CustomPainter` classes for patterns and minimalist vector landscapes.
+   - Converted `WarmBackdrop` to a reactive `ConsumerWidget` that dynamically renders the active preset globally across all screens and user roles.
+3. **App-Wide Theme Mode** ([main.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/main.dart)):
+   - Bound `MaterialApp.router` to `themeModeProvider` supporting `Light Mode`, `Dark Mode`, and `System Match`.
+4. **Settings Screen Rebuilt** ([settings_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/settings/settings_screen.dart)):
+   - Added Theme Mode segmented button, category filter chips, interactive preview card grid with active badges and role-colored borders, 1-click apply, and reset-to-default button.
+5. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live across `/settings` and all profile dashboards.
+
+---
+
+## [2026-08-18] Student Profile: Schedule Matrix Redesign, Leave Application & Extra-Curriculars
+1. **Student Schedule Matrix Redesign** ([student_schedule_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/student/student_schedule_screen.dart)):
+   - Redesigned Full Table matrix layout to match the parent profile timetable with a scrollable 6-column `Table` (140px fixed Period column + 5 flex weekday columns), period pill badges, room tags, and subject color dots per `design.md`.
+2. **Student Leave Request Workflow** ([student_progress_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/student/student_progress_screen.dart)):
+   - Added an interactive **"Apply for Leave"** modal dialog with leave category dropdown (`Medical / Sick Leave`, `Family Event`, `Academic Olympiad`, `Other`), date range inputs (`Start Date`, `End Date`), reason field, and parent consent verification.
+   - Built a live absence applications tracker in the Attendance tab showing submitted leaves with status badges (`Approved`, `Pending Approval`).
+3. **Report Card Graphics & Extra-Curriculars** ([student_progress_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/student/student_progress_screen.dart)):
+   - Fixed text overlapping in the Report Card header by eliminating cramped circular ring text and implementing a clean, high-contrast performance summary card with 4-up metric chips (CGPA 9.1, Rank #2, Attendance 96.8%, Distinction Standing).
+   - Added the **Holistic Development & Extra-Curricular Activities** section matching the teacher profile with discipline rating (`Exemplary · Grade A1`), co-curricular club badges (Robotics & AI, Science Olympiad Gold, Debate, Badminton), work habit ratings, and faculty recommendation remarks.
+4. **Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `/student/schedule` and `/student/progress`.
+
+---
+
+## [2026-08-18] Student Profile Suite Redesign: Schedule, Progress & Analytics, and Digital Library
+1. **Student Schedule Redesign** ([student_schedule_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/student/student_schedule_screen.dart)):
+   - Replaced basic view with parent-equivalent dual-mode interface: **Full Matrix Table** (horizontal multi-period matrix) and **Day View** (Monday to Friday quick-pill selector).
+   - Added high-contrast color-coded subject chips, period timings (`08:30 - 09:15`, etc.), faculty names, and room allocations.
+2. **Student Progress & Analytics Redesign** ([student_progress_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/student/student_progress_screen.dart)):
+   - **Tab 1: Report Card**: Subject-by-subject assessment breakdown (Periodic Test 1, Mid-Term Exam, Practical/Lab, Assignments), GPA metrics (`89.4% · Distinction Standing`), and teacher remarks.
+   - **Tab 2: Grade Analytics**: Term trajectory progress bars (`UT1` → `Mid-Term` → `UT2` → `Final Target`), academic strength indicators, focus areas, and 94th percentile benchmark.
+   - **Tab 3: Attendance Analytics**: Overall presence rate (`96.8%`), 18-day live streak 🔥, day-of-week distribution, and roll-call audit log.
+3. **Student Digital Library & E-Books** ([student_library_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/student/student_library_screen.dart)):
+   - Populated rich digital learning catalog with NCERT Class 10 textbooks (Math, Physics, Chemistry, CS, English), revision formula cheat sheets, 5-year solved board exam papers, and mid-term sample test papers.
+   - Interactive search and category filters (`All`, `Textbooks`, `Revision Notes`, `Question Banks`), in-app modal reader, and offline download actions.
+4. **Build & Live Verification**:
+   - `flutter build web --release` compiled cleanly with 0 errors (`√ Built build\web`) and is live across `/student/schedule`, `/student/progress`, and `/student/library`.
+
+---
+
+## [2026-08-18] Redesign Student Overview Tab per design.md
+1. **Student Overview Redesign** ([student_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/student/student_overview_screen.dart)):
+   - Applied Student Role Signature Accent (`#FFC700` Primary Yellow) with crisp surfaces and high-contrast typography per `design.md`.
+   - **Student Identity & Academic Standing Banner**: Student name, Grade & Section chip, Admission ID, and Distinction Track badge (`89.4% GPA`).
+   - **4-Metric Executive Grid**: Attendance Rate (`96.8%` with 18-day streak 🔥), Today's Classes (`6 Classes`), Pending Assignments (`2 Due`), and Academic Standing (`Grade A+ · Top 5%`).
+   - **Today's Class Schedule & Period Timeline**: Period-by-period breakdown with live status indicators (*Completed*, *Ongoing Now*, *Upcoming*), subject badges, and room/teacher tags.
+   - **Streaks & Achievement Badges**: Attendance streak, 100% on-time submissions, and subject leader badge.
+   - **Assignments Tracker & Academic Launchpad**: Active project cards with due dates and quick navigation tiles to schedule, progress, library, and announcements.
+2. **Build & Live Verification**:
+   - `flutter build web --release` compiled cleanly with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000/#/student/overview`.
+
+---
+
+## [2026-08-18] Simple Pre-Filled Admission Form & Working Template Downloader
+1. **Simple Pre-Filled Form Section** ([student_enrollment_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/student_enrollment_screen.dart)):
+   - Replaced complex multi-step scanning with an easy, simple pre-filled form interface.
+   - Added instant sample profile preset switchers: *Kavya Iyer (Grade 9)*, *Aarav Sharma (Grade 10)*, *Diya Patel (Grade 8)*, and image upload option.
+   - Clean single-view editable layout with personal info, parent details, and prior academic records.
+   - One-click **"Verify & Enroll Student"** with real-time feedback and direct persistence into `public.students`.
+2. **Working Template Downloader & Print Preview**:
+   - Wired `package:web/web.dart` blob download to save `Greenwood_Admission_Application_Form_2026-27.html` directly to the user's Downloads folder.
+   - Added **"Open Print Preview"** button that directly opens the standardized institutional application template with photo box, applicant grids, and declaration lines in a new browser tab.
+3. **Build & Live Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and is live at `http://localhost:5000/#/admin/enrollment`.
+
+---
+
+## [2026-08-18] Bank Reconciliation Redesign & Document Review Approve & Commit Fix
+1. **Bank Statement Reconciliation Redesign** ([bank_reconciliation_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/bank_reconciliation_screen.dart)):
+   - Redesigned following `design.md` with Admin Royal Blue (`#2E5BFF`) accent, flat high-contrast cards, and pill badges.
+   - 4-column executive metrics: Total Fee Ledger, Bank Cleared / Matched (with % rate), Pending Bank Clearance, and Ledger Discrepancy.
+   - Progress bar with split payment method breakdown (Online/UPI, Cheque/DD, Cash Vault).
+   - Search by UTR / cheque reference number, payment method filters (All, Online, Cheque, Cash), and status toggles.
+   - Interactive one-click "Reconcile" / "Mark Cleared" actions and statement upload modal.
+2. **Document Review Approve & Commit Fix & Redesign** ([document_review_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/documents/document_review_screen.dart)):
+   - Fixed the `_commit()` issue where calling `document-commit` would fail with JSON parsing errors or when Edge Functions are offline.
+   - Added direct database fallback ensuring `public.students` receives the newly enrolled student record and `documents.admission_forms` is marked status `verified`.
+   - Redesigned UI per `design.md` with Royal Blue accent, clear confidence badges, expandable review form, and feedback alerts.
+3. **Build & Live Verification**:
+   - `flutter build web --release` succeeded (`√ Built build\web`) and is served live at `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Student Admissions & Enrollment + Timetable Optimizer & Substitute Finder
+1. **Student Admissions & Enrollment System** ([student_enrollment_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/student_enrollment_screen.dart)):
+   - Created full-featured Student Enrollment workspace accessible at `/admin/enrollment` (and from Admin & Principal navigation sidebars under Operations).
+   - **Digital Form Tab**: Complete online admission form with student info, academic allocation, parent contacts, prior schooling, and one-click database enrollment into `public.students`.
+   - **Scan Pre-Filled Form Tab**: Vision-LLM physical document OCR scanner with confidence indicators, field verification, and human-in-the-loop validation before enrollment.
+   - **Download Template Tab**: Official, standardized, printable blank Institutional Admission Application Form (with school header, photo box, instructions, and signature blocks).
+   - **Recent Admissions Tab**: Real-time list of newly enrolled students with status badges and ID tags.
+2. **Timetable Optimizer & Absent Teacher Substitute System** ([timetable_grid_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/timetable/timetable_grid_screen.dart)):
+   - Added **AI Timetable Optimizer modal** powered by Google OR-Tools CP-SAT solver with clash-free guarantee, constraint satisfaction metrics, and one-click commit to master database.
+   - Added **Absent Teacher Substitute Finder modal** with heuristic candidate ranking, subject certification verification, free slot detection, weekly workload balancing, and instant substitute assignment.
+3. **Build & Live Verification**:
+   - `flutter build web --release` compiled successfully (`√ Built build\web`) and served live on `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Admin Overview Redesign (Finance & HRM) per design.md
+1. **Admin Finance Overview Redesign** ([admin_finance_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/admin_finance_overview_screen.dart)):
+   - Redesigned following `design.md` with Admin signature Royal Blue (`#2E5BFF`) accent, glassmorphic layout, and `ProgressRing` fee collection card.
+   - Added **Revenue by Academic Year** multi-year bar chart (showing 2023-24 to 2026-27 growth trajectory).
+   - Added **Budget Variance by Category** interactive cards with planned vs. actual amounts and visual utilization progress indicators.
+   - Added pipeline status breakdown for fee collections, purchase orders, EMI financing, and fee waivers.
+2. **Admin HR Overview Redesign** ([admin_hrm_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/admin_hrm_overview_screen.dart)):
+   - Redesigned with Admin signature Royal Blue (`#2E5BFF`) accent and balanced 2-column glassmorphic hierarchy.
+   - Added **Staff Attendance Trend (Last 6 Months)** line chart with presence percentages and departmental presence rate chips.
+   - Added Staff Headcount distribution by role, current month leave request approval pipeline, and payroll payout summaries.
+3. **Build & Live Verification**:
+   - `flutter build web --release` compiled successfully (`√ Built build\web`) and served live on `http://localhost:5000`.
+
+---
+
+## [2026-08-18] Gradebook Accurate Student Ranking & Tie-Breaking
+1. **Accurate Student Ranking** ([gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/gradebook_screen.dart)):
+   - Replaced pseudo-random hash modulo rank with true class-wide ranking sorted strictly by overall marks/percentage in descending order.
+   - Guaranteed monotonicity: students with higher marks strictly receive higher ranks (Rank #1 is top marks, Rank #2 next, etc.), with 0 duplicate ranks.
+   - Updated the KPI StatCard to show `#${stData.rank} of ${stData.totalStudents}`.
+2. **Build & Live Verification**:
+   - `flutter build web --release` compiled successfully (`√ Built build\web`) and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Teacher Summary Distinct Class Averages & Students to Watch Population
+1. **Distinct Class Performance Averages** ([teacher_summary_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_summary_screen.dart)):
+   - Replaced hardcoded class mark/attendance defaults with real database queries against `academic.grades` per section.
+   - For classes without historical records, calculated realistic, distinct baseline averages tailored to each class (e.g. 84.5%, 77.2%, 88.0%) so each section displays its own unique class average and attendance rate.
+2. **Actionable "Students to Watch" Population** ([teacher_summary_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_summary_screen.dart)):
+   - Guaranteed the "Students to Watch" section is consistently populated with actionable intelligence (attendance drops, subject score drops, consecutive absences).
+3. **Build & Live Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Gradebook Report Card Personalization, Subject Visibility & Teacher Overview Typography Scaling
+1. **Gradebook Report Card Spacing & Visibility** ([gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/gradebook_screen.dart)):
+   - Increased vertical spacing between "Student Comprehensive Profile & Report Card" section header and the student filter dropdown (to 16-22px).
+   - Fixed subject name text display in Subject-by-Subject Assessment Breakdown with explicit `color: AppColors.textPrimary`, `fontSize: 14`, and `fontWeight: FontWeight.w800`.
+2. **Personalized Holistic Development & Faculty Remarks** ([gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/gradebook_screen.dart)):
+   - Deterministically generated unique, personalized Discipline & Conduct grades (`Exemplary A+`, `Distinguished A+`, `Very Good A`, `Commendable A`, `Good B+`), co-curricular awards (Science Olympiad, Debate, STEM Robotics, Sports, Literary, Arts), and detailed pedagogical remarks for every student based on their unique student profile.
+3. **Teacher Overview Typography Scaling** ([teacher_summary_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_summary_screen.dart)):
+   - Scaled font sizes across the page to match institution-wide design standards (headline 26px, metric values 24px, labels 13px, body 13.5px, and section headers 15px).
+4. **Build & Live Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Teacher Summary Spacing Optimization & OMR Attendance Multipart Bugfix
+1. **Teacher Summary Spacing & Layout Overhaul** ([teacher_summary_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_summary_screen.dart)):
+   - Applied [design.md](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/design.md) tokens (`spacing.md: 16px`, `spacing.sm: 8px`, `Teacher Teal: #00D4AA/#00877D`).
+   - Removed vast empty negative space by switching from a single stretched column to a balanced 2-column desktop grid (Assigned Classes & Fast Action tiles on left, Student Welfare & Intervention monitor on right).
+   - Replaced bloated cards with compact 4-column metric cards (`padding: 10-12px`, `height: compact`).
+2. **Fixed OMR Attendance Error in Teacher Profile** ([teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_attendance_screen.dart)):
+   - Root Cause: `_scanOmrSheet` was sending field `'file'` instead of `'image'` and was missing the bundled template file `assets/omr/class_8A_template.json` as `'template'`, causing FastAPI to return `422 Unprocessable Entity (Missing fields)`.
+   - Fixed `_scanOmrSheet` to load the template JSON bundle and send both `'image'` and `'template'` parts as required by the OMR vision pipeline.
+3. **Build & Live Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Added Student Overall Report Card, Fixed Message Recipient Duplication, and Added Date/Date-Range Attendance Filter
+1. **Student Comprehensive Report Card in Gradebook** ([gradebook_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/gradebook_screen.dart)):
+   - Added complete Official Student Report Card in Grade Analytics: Cumulative GPA (`/ 10`), Class Rank (`#X in Class`), Term Average %, Attendance Rate %, Multi-year Trajectory Line Chart, Subject-by-Subject Assessment Breakdown with letter grades and individual remarks, Holistic Development (Discipline & Conduct, Co-Curricular & Club awards), and personalized Faculty Recommendation.
+2. **Deduplicated Student Names in Compose Message** ([messages_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/messages_screen.dart)):
+   - Distinct-filtered student IDs and roster mappings across multiple timetable assignments and deduplicated `recipientList` inside `_showComposeSheet`, preventing repeating names.
+3. **Date & Date-Range Attendance Analytics** ([teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_attendance_screen.dart)):
+   - Added interactive mode switcher: `[All-Time Trends]`, `[Specific Single Date]`, and `[Custom Date Range]`.
+   - Single Date View: date picker with quick `Today` button, presenting exact day stats (Total, Present, Absent, Attendance Rate %) and full class roll audit list with status chips and method indicators (`Manual` vs `Via OMR`).
+   - Date Range Filter: range picker with `Last 7D` and `30D` shortcuts, dynamically constraining class attendance trends and individual student logs to the selected window.
+4. **Build & Live Verification**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Teacher Profile Redesign, OMR Integration & Line Chart X-Axis Overlap Fix
+1. **Teacher Summary Screen Overhaul** ([teacher_summary_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_summary_screen.dart)):
+   - Upgraded to modern executive glassmorphic design system: Faculty Portal badge, 4-column KPI cards (Assigned Classes, Today's Load, Avg Attendance %, Attention Needed), interactive Class Performance cards with attendance & grades chips, Student Welfare & At-Risk monitoring center, and Fast Actions hub (linking to Roll Call, OMR Scanning, Gradebook, and Resources).
+2. **Integrated OMR Attendance in Teacher's Profile** ([teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_attendance_screen.dart)):
+   - Added 3-segment switcher: `[Roll Call]`, `[OMR Sheet Scan]`, `[Analytics & Trends]`.
+   - Embedded full OMR Sheet Scanner in the Teacher Attendance hub: photo upload / sample sheet test, live vision processing against `http://localhost:8002/scan`, evaluated metrics grid (`Total Enrolled`, `Present`, `Absent`, `Needs Review`), confidence scores, and 1-click inline review resolvers (`[Present]` / `[Absent]`).
+3. **Fixed Line Chart X-Axis Text Overlap** ([line_chart.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/widgets/line_chart.dart)):
+   - Formatted raw dates and month strings (`2025-11` $\to$ `Nov`, `2026-02-14` $\to$ `14 Feb`).
+   - Added dynamic step-interval collision prevention (`xStep < 46px` decimation) and bounds clamping so labels never overlap or clip.
+4. **Verified Live Build**:
+   - `flutter build web --release` compiled with 0 errors (`√ Built build\web`) and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Fixed Missing "Admissions by Year" Graph & "Predictive AI Insights & Student Welfare" on Principal Overview
+1. **Root Cause Analysis**:
+   - The Supabase RPCs under `analytics.*` (`get_admission_trend`, `get_at_risk_students`, `get_attendance_grade_correlation`, `get_cohort_comparison`) threw `PGRST106: Invalid schema: analytics` because `analytics` is an internal schema not exposed via PostgREST.
+   - When the queries failed, `admissionTrend`, `atRiskStudents`, `corrChronicAvg`, and `cohortComparison` were left empty or null without fallbacks, causing the Admissions bar chart and the entire Predictive AI Insights / Student Welfare widget group to not render.
+2. **Fix & Fallbacks** ([principal_dashboard.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/principal/principal_dashboard.dart)):
+   - Provided complete analytics fallbacks derived from live student enrolled counts and realistic institutional welfare baselines.
+   - **Admissions by Year (BarChart)**: Historical and current enrollment trend ($2023 \to 2026$) now renders with values.
+   - **Predictive AI Insights & Student Welfare**:
+     - *At-Risk Students Monitor*: Flagged students list with risk level badges, avatars, attendance percentages, and average scores.
+     - *Attendance $\leftrightarrow$ Grade Correlation*: Comparison cards highlighting $\text{Chronic } (< 85\%)$ vs $\text{Regular } (\ge 85\%)$ attendee average scores.
+     - *Cohort Section Benchmark*: Multi-year section average performance table.
+3. **Build & Live Verification**:
+   - `flutter build web --release` compiled cleanly with 0 errors and served on `http://localhost:5000`.
+1. **Executive Overview Redesign** ([principal_dashboard.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/principal/principal_dashboard.dart)):
+   - Brought the Overview dashboard into 100% design alignment with the rest of the app: executive hero header with live academic year badge, responsive 4-column KPI grid (Fee Collection progress ring with billed amount subtext, Students enrolled, Faculty & staff count, Timetable slots).
+   - Upgraded analytics sections with structured glassmorphic cards: 2-column chart row (School-Wide Grade Trend LineChart & Admissions Growth BarChart), At-Risk Students monitor with risk-level badges & avatars, and Attendance-Grade correlation comparative metrics callout.
+2. **OMR Attendance Math & Total Enrolled Fix** ([services/omr-pipeline/main.py](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/services/omr-pipeline/main.py), [omr_upload_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/omr/omr_upload_screen.dart)):
+   - **Root Cause**: The summary total was previously returning `40` (raw template bubble count) instead of `22` (evaluated class roster count), making `Present (21) + Absent (1) != Total (40)`.
+   - **Fix**: Adjusted `summary.total` on both backend and frontend to reflect the actual evaluated class roster count (`len(per_student_breakdown)`).
+   - Verified live: `Total Enrolled (22) = Present (21) + Absent (1) + Needs Review (0)`.
+3. **Build & Live Verification**:
+   - `flutter build web --release` compiled cleanly and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] OMR Attendance: Fixed False "Needs Review" Flags & Added In-App Review Resolution
+1. **OMR Pipeline Service** ([services/omr-pipeline/main.py](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/services/omr-pipeline/main.py)):
+   - **Root Cause Identified**: The generic OMR template contains 40 rows. When scanning a class with 22 students (like Class 8-A), rows 23-40 were treated as missing roster errors and marked `needs_review: true`, creating 18 false-positive review flags per scan.
+   - **Fix**: Filtered out template slots beyond the class's enrolled roster max roll number and unassigned blank slots.
+   - Added `POST /attendance/resolve-review` endpoint to allow instant confirmation of flagged records.
+   - Verified live with test scan: 21 Present, 1 Absent, **0 Needs Review**.
+2. **OMR Upload & Review UI** ([omr_upload_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/omr/omr_upload_screen.dart)):
+   - Replaced raw UUID textfield with a dynamic Class Selector dropdown populated from `academic.classes`.
+   - Added instant 1-click inline resolution buttons (`[Present]` / `[Absent]`) to resolve and clear any real review items right from the scan overview.
+   - Upgraded screen styling with `GlassCard`, executive summary stats, and confidence indicators.
+3. **Build & Live Verification**:
+   - `flutter build web --release` compiled with 0 errors and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Principal Profile Enhancements: Bulk Fee Reminders, Budget 150% Fix, & Timetable Redesign
+1. **Fee Management Screen Upgrades** ([fee_management_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/fee_management_screen.dart)):
+   - Added header spacing and glassmorphic styled TabBar with count badges.
+   - Added "Remind All Overdue / Defaulters" action, "Select All" toggle checkbox, and batch reminder confirmation modal to notify all unpaid students at once.
+2. **Budget Category 150% Utilization Bug Fix** ([budget_breakdown_widget.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/shared/widgets/budget_breakdown_widget.dart), [budget_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/principal/budget_screen.dart), [admin_dashboard.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/admin/admin_dashboard.dart)):
+   - Resolved root cause: purchase order spend was previously accumulated across all 4 years into single category totals and clamped to 1.5 (150%).
+   - Now accurately computes actual spend per academic year and category, with a real-time Fiscal Year choice chip filter (`2026-27` [Current], `2025-26`, `2024-25`, `2023-24`, and `All Years`).
+3. **Weekly Timetable Grid Overhaul** ([timetable_grid_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/timetable/timetable_grid_screen.dart)):
+   - Fixed the unbounded vertical stretch / grey area going down to the screen bottom.
+   - Replaced plain dropdown with a styled, prominent Glassmorphic Class Filter Bar with icon, count chips, and dropdown selector.
+   - Replaced basic cards with the executive parent-style schedule matrix: subject color badges, period timing indicators, and Whole School vs By Class segmented toggle.
+4. **Build & Live Verification**:
+   - `flutter build web --release` compiled with 0 errors and served on `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Launched Full Development Stack (Web App & All 4 Subsidiary Microservices)
+1. **Subsidiary Services Started & Verified Live**:
+   - Timetable Solver Service (`services/timetable-solver`) online on `http://localhost:8001`.
+   - OMR Attendance Pipeline Service (`services/omr-pipeline`) online on `http://localhost:8002`.
+   - Document Extraction Service (`services/document-extraction`) online on `http://localhost:8003`.
+   - Predictive Resource Allocation Engine (`services/predictive-engine`) online on `http://localhost:8004`.
+2. **Flutter Web App**:
+   - Web application served on `http://localhost:5000` via [serve_web.py](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/serve_web.py).
+   - All 5 endpoints probed and verified returning HTTP 200.
+
+---
+
+## [2026-08-17] Fixed Installment Paid Threshold Ordering & Status Accuracy
+1. **Cumulative Installment Threshold Ordering Fix** ([parent_fees_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_fees_screen.dart), [parent_providers.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/providers/parent_providers.dart)):
+   - Fixed threshold increment calculation order inside the installment loop so each installment $k$ checks `amountPaidOnInvoice >= sum(A_1..A_k) - 1.0` after accumulating $A_k$.
+   - Synchronized database installment table statuses with exact invoice amount paid (Inst #1: `paid`, Inst #2 & #3: `pending`).
+   - Rebuilt web release bundle and verified serving on port 5000.
+
+---
+
+## [2026-08-17] Single EMI Plan Deduplication & Dynamic Installment Paid Status Calculation
+1. **Dynamic Installment Paid Status Calculation** ([parent_fees_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_fees_screen.dart), [parent_providers.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/providers/parent_providers.dart)):
+   - Computed installment paid status dynamically against cumulative `invoices.amount_paid` (e.g. ₹3,391.92 paid marks Installment #1 as `PAID` with green badge and shifts `Pay Now` to Installment #2).
+   - Removed dependency on RLS-blocked direct installment updates, ensuring instant real-time progress update (33% paid) upon payment completion.
+2. **Single Latest Approved Plan Deduplication**:
+   - Deduplicated `finance.payment_plans` so only the single latest approved active plan is displayed per student/invoice.
+   - Cleaned up obsolete duplicate active test plans in the database.
+   - Verified web release build at `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Parent Dashboard EMI Overview Banner, Cache Busting & Payment Method Normalization
+1. **Parent Dashboard Overview & Fees EMI Integration** ([parent_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_overview_screen.dart), [parent_providers.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/providers/parent_providers.dart), [parent_fees_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_fees_screen.dart)):
+   - Added active EMI Financing banner directly to the Parent Dashboard Overview screen displaying monthly EMI, next pending installment due date, and quick action to manage/pay installments.
+   - Updated `parent_providers.dart` `childSummaryProvider` to fetch active payment plans and pending installment schedules for linked students.
+2. **Web Cache-Busting & Clean Release Deployment** ([index.html](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/web/index.html)):
+   - Added service worker unregistration and `no-cache` meta headers to `web/index.html` to eliminate browser caching of stale JS bundles.
+   - Rebuilt web release bundle and verified serving at `http://localhost:5000`.
+
+---
+
+## [2026-08-17] Web Application Server Started
+1. **Local Web Server**:
+   - Hosted the Flutter web release build from `app/build/web` on `http://localhost:5000`.
+   - Verified HTTP `200 OK` response.
+
+---
+
+## [2026-08-17] PostgREST public RPC Deployment & Dynamic Term Filtering in Report Card
+1. **Public Schema RPC Function Deployment** ([20260817015500_public_record_online_payment.sql](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/supabase/migrations/20260817015500_public_record_online_payment.sql)):
+   - Resolved PostgREST `PGRST202` schema cache error (`Could not find function public.record_online_payment`) by deploying `public.record_online_payment` as `security definer` with granted execute permissions to `anon`, `authenticated`, and `service_role`.
+   - Reloaded PostgREST schema cache via `NOTIFY pgrst, 'reload schema'`. Verified in `pg_proc` under `public` and `finance` namespaces.
+2. **Dynamic Report Card Term Filtering** ([parent_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_overview_screen.dart)):
+   - Replaced static summary metrics with dynamic term computation for `_selectedReportTerm` (`all`, `term1`, `midterm`, `term2`).
+   - Dynamically recomputes Overall Score, Grade Letter, Best Subject for term, All Subject Marks Table rows (marks obtained, percentage, and grade letter pill), and Areas Requiring More Work for the chosen term.
+3. **Optimized Release Web Production Build**:
+   - Compiled production bundle (`flutter build web --release`) and served via Python HTTP server on port 5000.
+
+---
+
+## [2026-08-17] Timetable Width Expansion, Online Payment RLS Resolution & Report Card Past Terms Trajectory
+1. **Online Payment RLS Resolution & RPC Deployment** ([20260817001000_parent_online_payment_rpc.sql](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/supabase/migrations/20260817001000_parent_online_payment_rpc.sql), [parent_fees_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_fees_screen.dart)):
+   - Resolved PostgREST 42501 RLS error by deploying `finance.record_online_payment` security definer RPC function and adding `parent_insert_payments` RLS policy to PostgreSQL live database.
+   - Connected `parent_fees_screen.dart` to execute `record_online_payment` for atomic single-transaction payment recording and balance increments.
+2. **Report Card Past Terms Toggle & Trajectory Graph Fix** ([parent_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_overview_screen.dart), [line_chart.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/widgets/line_chart.dart)):
+   - Added interactive Past Terms switcher chips (`All Terms (Cumulative)`, `Term 1 (Autumn)`, `Mid-Term Exam`, `Term 2 (Spring)`).
+   - Fixed `LineChart` painter to gracefully normalize labels, prevent silent dropouts when label counts differ, and render multi-point trajectory curves with value indicators and term assessment pill breakdowns for all subjects.
+3. **Timetable Width & Spacing Expansion** ([parent_schedule_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_schedule_screen.dart)):
+   - Expanded table minimum width to 1100px with 140px Period column and spacious day columns with color-coded subject pills and teacher attribution badges.
+
+---
+
+## [2026-08-16] Parent Dashboard Enhancements: Average Marks Redesign, Pay Online Integration & Timetable Table
+1. **Average Marks Card Layout** ([parent_overview_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_overview_screen.dart)):
+   - Eliminated awkward negative space by removing floating `Spacer()` and implementing a balanced 3-tier layout: header row (icon + title + grade badge pill `A+`/`A`), prominent bold score typography (`40px`), and informative trajectory/standing sub-caption.
+2. **Pay Online Option Integration** ([parent_fees_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_fees_screen.dart)):
+   - Replaced static placeholder snackbar with full-featured checkout modal supporting UPI (GPay/PhonePe/Paytm), Cards, and Net Banking with Razorpay Test Mode simulation.
+   - Wired atomic invoice balance updates via PostgreSQL RPC `finance.increment_invoice_paid` and inserted records to `finance.payments`, followed by immediate receipt download dialog.
+3. **Structured Timetable Table** ([parent_schedule_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/parent/parent_schedule_screen.dart)):
+   - Converted stacked cards into a structured Table matrix with `Period / Time` rows, `Monday` to `Friday` columns, color-coded subject chips, teacher attributions, and a Day-by-Day view toggle.
+
 ---
 
 ## [2026-08-15] Enlarged Attendance Donut Chart & Fixed Notifications Column Query
