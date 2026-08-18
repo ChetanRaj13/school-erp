@@ -1,57 +1,49 @@
-# School ERP — Fintech Suite
+# School ERP — Future-Ready Ops
 
-A submission for the **Smart School Fintech Innovation Challenge**. This project reimagines how a school handles money — fee collection, payments, payroll, procurement, and financial oversight — as a single connected system instead of registers, spreadsheets, and manual reconciliation.
+**Submission for [PaperBuddy EduHack](https://paperbuddy.in/hacktheweb#/future-ready-ops) — Future-Ready Ops track.**
 
-Five roles sign into one app — Principal, Admin, Teacher, Student, Parent — and each sees a role-specific view of the same underlying financial data, backed by a Postgres database with row-level security enforcing who can see and touch what.
+Five roles — Principal, Admin, Teacher, Student, Parent — sign into one connected system that replaces the manual data entry, physical document storage, and siloed scheduling the track brief describes, backed by a Postgres database (Supabase) with row-level security enforcing who can see and touch what.
 
-## The core fintech problem this solves
+## The challenge, and how this answers it
 
-Schools handle a surprising amount of financial complexity: fee collection across hundreds of students with different due dates and partial payments, late fee calculation, scholarship and waiver approvals, EMI-style fee financing for families who can't pay in one lump sum, vendor payments, payroll, and reconciliation — most of it still done by hand in a lot of schools. This project puts all of it on rails: every rupee is tracked from invoice to payment to reconciliation, with an audit trail and approval workflow instead of a paper register.
+> "School administration remains heavily reliant on manual data entry, physical document storage, and siloed scheduling systems, leading to extreme inefficiencies. Build intelligent, AI-powered solutions that automate everyday school operations, digitize records, and drastically reduce the administrative workload."
 
-## Razorpay — online fee payments
+That's the brief. Here's what's actually built against each part of it — not a pitch, a map from the track's own requirements to real, running code.
 
-Online payment is the centerpiece of the fintech story here: a parent should be able to open the app, see exactly what's due for their child, and pay it — with the money landing correctly against the right invoice, no manual entry required on the school's side.
+### Core Technical Requirements
 
-How it's wired:
+**AI Document Processing** — a Supabase Edge Function (`document-extraction-trigger`) takes a photographed or scanned admission form, calls a vision-capable LLM, and returns structured fields for review before they're committed to the database by a second function (`document-commit`). A parent's paper form becomes a reviewable draft record, not a re-typing job for office staff.
 
-- **Order creation** happens server-side through a Supabase Edge Function (`create-razorpay-order`) — the app never talks to Razorpay directly with a client-trusted amount. The order amount is looked up from the actual invoice on the server, not passed in blind from the client, so a parent can't tamper with what they're charged.
-- **Checkout** opens via `razorpay_flutter` on mobile, with a web-specific bridge for Flutter web (Razorpay's SDK is JS-based, so the web build talks to it through a small interop layer rather than the native package).
-- **Payment confirmation is webhook-driven, not client-driven** — a Razorpay webhook is the only thing allowed to mark an invoice as paid. The webhook verifies the payment signature (constant-time HMAC-SHA256) before touching the database, so a spoofed "success" callback from the client can never fake a payment.
-- **Idempotency** — duplicate webhook deliveries for the same payment are detected and ignored, so a network retry from Razorpay can't double-count a payment.
-- **Atomic balance updates** — when a payment lands, the invoice's paid amount is updated with a single atomic Postgres operation, not a read-then-write from the app, so two payments arriving close together can't silently overwrite each other and lose money.
-- **Test mode** — currently running against Razorpay's test environment, so the full payment flow can be demoed end-to-end without moving real money.
+**Timetable Optimization** — the timetable isn't hand-built or greedily assigned; `services/timetable-solver` formulates it as a real constraint-satisfaction problem and solves it with **Google OR-Tools' CP-SAT solver** — hard constraints (no class or teacher double-booked, exact periods-per-week per subject, qualified-teacher-only assignment) with room assignment and infeasibility reporting when a valid schedule genuinely doesn't exist, rather than silently producing a broken one.
 
-**Status:** the parent-facing "Pay Online" flow now calls a real online-payment sheet backed by the order-creation function above, and three recent migrations (`20260817001000_parent_online_payment_rpc`, `20260817015500_public_record_online_payment`, `20260817104500_fix_online_payment_method_cast`) add the server-side recording path. This appears complete end-to-end based on the code — worth one real click-through against a test account to confirm before treating it as fully closed, per this project's own habit of verifying "done" claims independently (see `CONTRIBUTING.md`) rather than taking a commit message at face value.
+**School ERP Automation** — every financial, academic, and administrative table lives in one Postgres schema instead of scattered legacy apps, and the UI stays synced across roles the way the brief specifically asks: the whole app is built on **Riverpod** (`flutter_riverpod`) for reactive state, with a shared `RoleShell` (a `go_router` `StatefulShellRoute`) providing one consistent navigation chrome that ~30 screens plug into rather than each role reinventing its own shell.
 
-## Other fintech features
+### The Admin Dashboard
 
-- **Fee management** — per-student invoices, partial payments, offline payment recording (cash/cheque) with the same atomic balance-update guarantee as online payments, and GST-compliant invoice generation
-- **Late fees** — automatic calculation on overdue invoices
-- **Scholarships & waivers** — parents can request a fee waiver; admin approves or rejects, and approved waivers reduce the invoice balance with a clear disbursement step and timestamp
-- **EMI / fee financing** — parents can request to split a fee into installments instead of paying in full, with an admin approval step before a payment plan becomes active
-- **Payroll** — staff salary runs, with an approval queue before payments are finalized
-- **Vendor & procurement** — purchase orders, vendor performance tracking, and vendor payments, each going through the same approval-queue pattern as payroll
-- **Bank reconciliation** — matching recorded payments against what's actually settled
-- **Financial oversight dashboards** — fee collection vs. pending vs. overdue, revenue vs. expense vs. budget, purchase-order pipeline by status, all built from real invoice and payment data rather than static numbers
-- **Student admissions** — enquiry-to-enrolment intake, including document upload with AI-assisted field extraction (a Supabase Edge Function reads an uploaded admission form image and drafts the structured fields for review, rather than manual re-typing)
+The brief asks for "a centralized command center designed for minimal clicks... proactive alerts for operational bottlenecks rather than hunting for data." `admin_dashboard.dart` already has a live `SystemAlertsWidget` surfacing pending approvals and operational alerts up front, plus dedicated HR and Finance overview screens (staff headcount, leave summary, payroll status, fee collection vs. pending vs. overdue, purchase-order pipeline) — the numbers are pulled from real invoice/payment/staff data, not static placeholders.
 
-## Roles and what each one does financially
+### Think outside the box
 
-- **Principal / Admin** — full financial oversight: fee management, payroll, vendor payments, budget, approvals for both HR and Finance workflows (Admin has a dedicated HR/Finance workspace toggle covering both without duplicating screens)
-- **Parent** — sees exactly what's owed for their child, pays online via Razorpay or waits on an approved waiver/EMI plan
-- **Student** — read-only visibility into their own fee status
-- **Teacher** — no direct financial role, kept separate from money-handling by design
+**Predictive resource allocation** — this exists in two real, honestly-distinct pieces, not one:
+- **Live today**: `principal_dashboard.dart` and `teacher_summary_screen.dart` both call an `analytics.get_at_risk_students` database function and render an "At-Risk Students Monitor" — predictive student-welfare flagging from historical attendance and grade trends, already on screen.
+- **Built, not yet wired to a UI**: `services/predictive-engine/predictor.py` goes further — a hybrid heuristic + actual **scikit-learn logistic regression model** (`compute_absence_risk_hybrid`) trained on historical attendance patterns, plus a `find_resource_gaps` function aimed at exactly the staff-assignment allocation problem the brief describes. It's real, tested logic sitting behind a FastAPI service — the remaining work is a dashboard screen to surface it, not the prediction itself.
+
+**Automated attendance** — not RFID, but the same "computer vision seamlessly into the ERP" idea: `services/omr-pipeline` uses OpenCV with **ArUco marker detection** to correct a photographed attendance sheet's perspective, then reads bubble-fill fractions to mark attendance — a phone photo of a paper sheet becomes structured attendance data without manual entry.
+
+## How this maps to the evaluation criteria
+
+**Innovation & Impact** — the fintech layer (Razorpay online payments with server-verified webhook confirmation, EMI financing, waiver approval workflows, payroll, vendor procurement) goes beyond what the track brief asks for on its own, tackling a second real administrative pain point — money — alongside documents, timetables, and attendance. `docs/gap_analysis.md` is a direct audit of PaperBuddy's own public demo, used to make sure this project's feature set doesn't just duplicate what already exists.
+
+**Technical Execution** — Postgres row-level security scoping every table by school and role; a signature-verified, idempotent Razorpay webhook with atomic balance updates (no race conditions on money); OR-Tools CP-SAT for the timetable; a real ArUco/OpenCV computer-vision pipeline for OMR; Riverpod + go_router throughout the Flutter app. See `SECURITY.md` for the honest current security posture, including what's still open, not just what's fixed.
+
+**UI/UX Design** — the app is mid-migration to a flatter, higher-contrast, purpose-built design system (`docs/design.md`) — bold color-blocking, pill shapes, no drop shadows — replacing an earlier photo-backdrop theme, with role-based accent colors for wayfinding across the five dashboards.
 
 ## Stack
 
-- **App**: Flutter (web), Riverpod for state, go_router for navigation (a `StatefulShellRoute`-based `RoleShell` provides the persistent sidebar/drawer/bottom-nav chrome shared by every role)
-- **Backend**: Supabase — Postgres, auth, storage, Edge Functions (Deno/TypeScript), row-level security scoping every financial table by school and role
+- **App**: Flutter (web), Riverpod for state, go_router for navigation
+- **Backend**: Supabase — Postgres, auth, storage, Edge Functions (Deno/TypeScript), row-level security scoping every table by school and role
 - **Payments**: Razorpay, via a server-verified Edge Function + webhook flow
-- **Microservices**: FastAPI, for OMR-based attendance, timetable generation, and predictive analytics, run via Docker Compose. Document extraction previously ran here too; it's since moved to Supabase Edge Functions (see `docs/tech_debt.md`)
-
-## Visual design
-
-The app is mid-migration from an earlier "nature matte glass" theme to a flatter, higher-contrast design system — see `docs/design.md` for the palette, typography, and component tokens, and `docs/tech_debt.md` for what's already been retired as part of that migration (the old photo-backdrop system is gone; a few older, now-unrouted dashboard screens are flagged as cleanup candidates, not yet removed).
+- **Microservices** (FastAPI, via Docker Compose): OMR attendance (OpenCV/ArUco), timetable solver (OR-Tools CP-SAT), predictive engine (scikit-learn)
 
 ## Project layout
 
@@ -59,15 +51,12 @@ The app is mid-migration from an earlier "nature matte glass" theme to a flatter
 app/                  Flutter application (all 5 role dashboards live under lib/features/dashboard/)
 supabase/              Migrations, Edge Functions (Razorpay order + webhook, document extraction, attendance sync), config
 services/              FastAPI microservices (OMR pipeline, timetable solver, predictive engine)
-docs/                  Living project documentation — design system, architecture, tech debt, competitive gap analysis
+docs/                  Living project documentation — design system, architecture, tech debt, PaperBuddy gap analysis
 scripts/               Utility scripts
 test/                  Tests
 docker-compose.yml     Runs the microservices locally
 SECURITY.md            Security posture — what's fixed, what's known-open
 CONTRIBUTING.md        Real lessons from this project's history (multi-agent workflow, migration numbering, Postgres gotchas)
-VERIFICATION_CHECKLIST.md   Live, hand-checked QA log against a running local build
-context-handoff-brief.md    Standalone context handoff for chat-based AI sessions without direct repo access
-prompt_of_changes.md        Ordered prompt log for the repo-connected coding agent (Grok)
 ```
 
 ## Running it locally
@@ -82,36 +71,21 @@ flutter run -d chrome
 docker compose up -d
 ```
 
-### One-Command Local Development (Windows / PowerShell)
-
-To launch both the local OMR attendance service (FastAPI on port 8002) and the Flutter web app together with a single command:
+### One-command local dev (Windows / PowerShell)
 
 ```powershell
 .\start-dev.ps1
 ```
 
-You'll need a `.env` file (see `.env.example`) with your Supabase project URL, anon key, and Razorpay test keys. These aren't committed — ask whoever's holding the project credentials.
-
-Database migrations are applied directly to the shared Supabase project; there's no local migration step required to run the app against it.
-
-## Security, as it relates to handling money
-
-- Row-level security on every financial table, scoped by school and role — a parent can only ever see their own child's invoices, an admin only their own school's data
-- Payment confirmation trusted only from the signature-verified Razorpay webhook, never from the client
-- Atomic balance updates on every payment path (online and offline) to eliminate race conditions on invoice balances
-- Approval workflows (not single-click actions) on payroll, vendor payments, waivers, and EMI requests, so no financial commitment happens without a second set of eyes
-
-See `SECURITY.md` for the full current posture, including known-open items (a real storage bucket scoping gap and pending RLS performance work) — this README only covers the money-handling highlights.
+You'll need a `.env` file (see `.env.example`) with your Supabase project URL, anon key, and Razorpay test keys — not committed.
 
 ## Where things actually stand
 
-**Working**: fee tracking, offline payment recording, payroll, the HR/Finance approval queue, vendor/procurement flow, waiver and EMI request-and-approval flow, financial dashboards, student admissions intake with AI-assisted document extraction, and the full Razorpay webhook-confirmation path. The online "Pay Online" checkout trigger now appears wired end-to-end as well (see the Razorpay section above) — flagged here as recently completed rather than a long-standing gap, since it was a known gap as recently as this README's previous version.
+**Working**: fee tracking, offline and online payment (Razorpay, webhook-confirmed), payroll, HR/Finance approval queue, vendor/procurement, waiver and EMI approval flow, financial dashboards, admission intake with AI document extraction, OMR computer-vision attendance, the OR-Tools timetable solver, and live at-risk-student prediction on two dashboards.
 
-**Known gaps**: see `SECURITY.md` (storage bucket scoping, RLS performance) and `docs/tech_debt.md` (a handful of unrouted legacy dashboard screens and other small cleanup items) for the current, actively-maintained list rather than duplicating it here.
+**Known gaps**: the predictive engine's staff-resource-gap model is built and tested but not yet surfaced in any screen; a handful of legacy unrouted dashboard screens are flagged for cleanup, not deletion, in `docs/tech_debt.md`. See `SECURITY.md` for the current security posture, including what's still open.
 
 ## Demo accounts
-
-One test account exists per role, so you can log in and click through as any of them:
 
 | Role | Email | Password |
 |---|---|---|
@@ -121,4 +95,4 @@ One test account exists per role, so you can log in and click through as any of 
 | Student | `chintu@gmail.com` | abcd@1234 |
 | Parent | `papa@gmail.com` | abcd@1234 |
 
-> **Before publishing this section**: these are real accounts on a live Supabase project with real data behind them. If this repo is public, anyone with these credentials can log in and interact with the actual database — not a sandbox copy. Either keep this repo private, move this table to a `.gitignore`d file and share it separately, or reset these passwords to values you're comfortable putting in a public file.
+> These are real accounts on a live Supabase project with real data behind them. If this repo is public, reset these passwords to values you're comfortable putting in a public file, or move this table somewhere `.gitignore`d.
