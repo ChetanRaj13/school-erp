@@ -2,6 +2,13 @@
 
 This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; append a new entry when you finish a task. Don't remove anything from the existing file
 
+## [2026-08-19] Repository Cleanup: Dead Dashboards, Obsolete Scaffolds, and Documentation Consolidation
+1. **Removed Redundant Dashboards & Stale Files**: Deleted dead unrouted dashboards (`teacher_dashboard.dart`, `student_dashboard.dart`, `parent_dashboard.dart`), `.bak` file, and superseded FastAPI `services/document-extraction`.
+2. **Cleaned Abandoned Scaffolds**: Removed obsolete `.gitkeep` files from empty scaffold folders and already-populated folders.
+3. **Consolidated Documentation**: Removed duplicate root `design.md` and `tech_debt.md` in favor of `docs/`, and relocated `schema.md`, `edge_functions.md`, and `testing.md` into `docs/`.
+
+---
+
 ## [2026-08-18] Principal Dashboard: Admissions by Year Currency Formatting & X-Axis Visibility Fix
 1. **Admissions by Year Currency Fix**:
    - In [bar_chart.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/widgets/bar_chart.dart), replaced hardcoded `'₹'` prefix with configurable `valuePrefix`, `valueSuffix`, and `valueFormatter`.
