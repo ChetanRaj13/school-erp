@@ -101,10 +101,10 @@ One test account exists per role, so you can log in and click through as any of 
 
 | Role | Email | Password |
 |---|---|---|
-| Principal | `ravi@gmail.com` | *(fill in)* |
-| Admin | `anita@gmail.com` | *(fill in)* |
-| Teacher | `cdsingh@gmail.com` | *(fill in)* |
-| Student | `chintu@gmail.com` | *(fill in)* |
-| Parent | `papa@gmail.com` | *(fill in)* |
+| Principal | `ravi@gmail.com` | abcd@1234 |
+| Admin | `anita@gmail.com` | abcd@1234 |
+| Teacher | `cdsingh@gmail.com` | abcd@1234 |
+| Student | `chintu@gmail.com` | abcd@1234 |
+| Parent | `papa@gmail.com` | abcd@1234 |
 
 > **Before publishing this section**: these are real accounts on a live Supabase project with real data behind them. If this repo is public, anyone with these credentials can log in and interact with the actual database — not a sandbox copy. Either keep this repo private, move this table to a `.gitignore`d file and share it separately, or reset these passwords to values you're comfortable putting in a public file.
