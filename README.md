@@ -95,4 +95,3 @@ You'll need a `.env` file (see `.env.example`) with your Supabase project URL, a
 | Student | `chintu@gmail.com` | abcd@1234 |
 | Parent | `papa@gmail.com` | abcd@1234 |
 
-> These are real accounts on a live Supabase project with real data behind them. If this repo is public, reset these passwords to values you're comfortable putting in a public file, or move this table somewhere `.gitignore`d.
