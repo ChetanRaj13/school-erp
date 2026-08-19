@@ -19,6 +19,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
   bool _loading = false;
   String? _errorMessage;
 
@@ -96,11 +97,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             const SizedBox(height: 14),
                             TextFormField(
                               controller: _passwordController,
-                              obscureText: true,
+                              obscureText: _obscurePassword,
                               autofillHints: const [AutofillHints.password],
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: 'Password',
-                                prefixIcon: Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary),
+                                prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                    color: AppColors.textSecondary,
+                                    size: 20,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                  tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                                  splashRadius: 20,
+                                ),
                               ),
                               validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
                               onFieldSubmitted: (_) => _submit(),

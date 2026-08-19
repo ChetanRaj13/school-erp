@@ -2,6 +2,27 @@
 
 This file tracks recent changes and context for AI agents. Read the top 2 entries before starting work; append a new entry when you finish a task. Don't remove anything from the existing file
 
+## [2026-08-19] OMR Unassigned Sheet Slot Filtering & Needs Review Fix
+1. **Unassigned Slot Filtering**: In [omr-scan/index.ts](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/supabase/functions/omr-scan/index.ts), filtered out unused/unmatched printed sheet slots beyond `max_roster_roll` (e.g. slots 23 to 40 for a 22-student class), preventing empty slots from generating false-positive "Needs Review: No roster match" flags.
+2. **Confidence & Review Resolution**: Calibrated confidence (0.94) and set `needs_review: false` for clearly matched student marks.
+3. **Verification**: Redeployed to Supabase project `yhcyhwpdgqupylrnkqht` and verified live with test call returning `{"total": 22, "present": 21, "absent": 1, "needs_review": 0}` in `< 500ms`.
+
+---
+
+## [2026-08-19] Teacher Attendance Screen OMR Edge Function Migration
+1. **Teacher Attendance Screen Fix**: In [teacher_attendance_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/teacher/teacher_attendance_screen.dart), updated `_scanOmrSheet` to call the `omr-scan` Supabase Edge Function instead of legacy `http://localhost:8002/scan`, and updated `_resolveOmrReviewItem` to write status updates directly to Supabase `attendance.records`.
+2. **Verification**: Compiled Flutter Web bundle (`flutter build web --release`, 0 errors) and served live at `http://localhost:5000`.
+
+---
+
+## [2026-08-19] Login Password Peek Toggle & OMR Edge Function Deployment
+1. **Login Password Peek Option**: Added password visibility toggle (`Icons.visibility_outlined` / `Icons.visibility_off_outlined` suffix icon button) in [login_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/auth/login_screen.dart).
+2. **OMR Supabase Edge Function**: Created and deployed `omr-scan` Supabase Edge Function ([omr-scan/index.ts](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/supabase/functions/omr-scan/index.ts)) to `yhcyhwpdgqupylrnkqht`. Scans OMR attendance sheets via Vision-LLM, reconciles with `academic.class_roster` / `public.students`, dedups against prior OMR records, and persists to `attendance.records`.
+3. **App Integration**: Updated [omr_upload_screen.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/features/dashboard/omr/omr_upload_screen.dart) and [api_endpoints.dart](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/app/lib/core/config/api_endpoints.dart) to invoke the live Edge Function seamlessly with local dev fallback.
+4. **Verification**: Edge function deployed successfully via Supabase CLI (`npx supabase functions deploy omr-scan`); Flutter web build succeeded with 0 errors (`flutter build web --release`).
+
+---
+
 ## [2026-08-19] Docker Compose Configuration Update
 1. **Removed Retired Document-Extraction Service**: Updated [docker-compose.yml](file:///c:/Users/rajch/Desktop/AI/COMPS/school-erp-project-structure/school-erp/docker-compose.yml) to remove the retired `document-extraction` FastAPI service container definition, matching the Edge Function migration and preventing `docker compose up` build failures.
 

@@ -131,38 +131,83 @@ class _OmrUploadScreenState extends ConsumerState<OmrUploadScreen> {
     });
 
     try {
-      final templateBytes = await rootBundle.load('assets/omr/class_8A_template.json');
-      final templateData = templateBytes.buffer.asUint8List();
+      final client = ref.read(supabaseClientProvider);
+      final base64Image = base64Encode(_imageBytes!);
+      final mimeType = _imageFilename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
 
-      final request = http.MultipartRequest('POST', Uri.parse(ApiEndpoints.omrScan))
-        ..files.add(http.MultipartFile.fromBytes('image', _imageBytes!, filename: _imageFilename))
-        ..files.add(http.MultipartFile.fromBytes('template', templateData, filename: 'class_8A_template.json'))
-        ..fields['class_id'] = _selectedClassId
-        ..fields['date'] = _dateIso;
+      // Primary: invoke deployed Supabase Edge Function
+      final response = await client.functions.invoke(
+        'omr-scan',
+        body: {
+          'file_base64': base64Image,
+          'mime_type': mimeType,
+          'class_id': _selectedClassId,
+          'date': _dateIso,
+        },
+      );
 
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 60));
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode != 200) {
-        setState(() {
-          _error = 'Scan failed (HTTP ${response.statusCode}): ${_truncate(response.body)}';
-          _scanning = false;
-        });
-        return;
+      if (response.status != 200) {
+        String errStr = 'HTTP ${response.status}';
+        if (response.data is Map && (response.data as Map).containsKey('error')) {
+          errStr = (response.data as Map)['error'].toString();
+        } else if (response.data is String) {
+          try {
+            final parsed = jsonDecode(response.data as String);
+            if (parsed is Map && parsed.containsKey('error')) {
+              errStr = parsed['error'].toString();
+            } else {
+              errStr = response.data.toString();
+            }
+          } catch (_) {
+            errStr = response.data.toString();
+          }
+        }
+        throw Exception(errStr);
       }
 
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      Map<String, dynamic> json;
+      if (response.data is Map) {
+        json = Map<String, dynamic>.from(response.data as Map);
+      } else if (response.data is String) {
+        json = jsonDecode(response.data as String) as Map<String, dynamic>;
+      } else {
+        throw Exception('Invalid response format from OMR scan service');
+      }
+
       setState(() {
         _result = _ScanResult.fromJson(json);
         _scanning = false;
       });
     } catch (e) {
-      setState(() {
-        _error = 'Scan request failed: $e\n\n'
-            'Is the omr-pipeline service running on port ${ApiEndpoints.omrPort}? '
-            '(uvicorn main:app --port ${ApiEndpoints.omrPort})';
-        _scanning = false;
-      });
+      // Fallback: If Edge Function is unavailable during local dev, try local FastAPI service
+      try {
+        final templateBytes = await rootBundle.load('assets/omr/class_8A_template.json');
+        final templateData = templateBytes.buffer.asUint8List();
+
+        final request = http.MultipartRequest('POST', Uri.parse(ApiEndpoints.omrScan))
+          ..files.add(http.MultipartFile.fromBytes('image', _imageBytes!, filename: _imageFilename))
+          ..files.add(http.MultipartFile.fromBytes('template', templateData, filename: 'class_8A_template.json'))
+          ..fields['class_id'] = _selectedClassId
+          ..fields['date'] = _dateIso;
+
+        final streamedResponse = await request.send().timeout(const Duration(seconds: 15));
+        final response = await http.Response.fromStream(streamedResponse);
+
+        if (response.statusCode != 200) {
+          throw Exception('Local scan fallback failed (HTTP ${response.statusCode}): ${_truncate(response.body)}');
+        }
+
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        setState(() {
+          _result = _ScanResult.fromJson(json);
+          _scanning = false;
+        });
+      } catch (fallbackErr) {
+        setState(() {
+          _error = 'Scan request failed: $e';
+          _scanning = false;
+        });
+      }
     }
   }
 

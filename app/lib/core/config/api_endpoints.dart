@@ -29,7 +29,8 @@ class ApiEndpoints {
 
   static String get omrScan => '$_base:$_omrPort/scan';
 
-  // -- Edge Functions (replace local FastAPI on port 8005)
+  // -- Edge Functions
+  static String get omrScanEdge => '$_edgeFunctionsBase/omr-scan';
   static String get docExtractTrigger => '$_edgeFunctionsBase/document-extraction-trigger';
   static String get docCommit => '$_edgeFunctionsBase/document-commit';
 

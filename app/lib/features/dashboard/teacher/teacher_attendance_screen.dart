@@ -455,44 +455,51 @@ class _TeacherAttendanceScreenState extends ConsumerState<TeacherAttendanceScree
     });
 
     final dateStr = DateTime.now().toIso8601String().split('T').first;
-    final uri = Uri.parse(ApiEndpoints.omrScan);
 
     try {
-      final templateBytes = await rootBundle.load('assets/omr/class_8A_template.json');
-      final templateData = templateBytes.buffer.asUint8List();
+      final client = ref.read(supabaseClientProvider);
+      final base64Image = base64Encode(_omrImageBytes!);
+      final mimeType = _omrImageFilename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
 
-      final request = http.MultipartRequest('POST', uri)
-        ..fields['class_id'] = _selectedClassId!
-        ..fields['attendance_date'] = dateStr
-        ..files.add(http.MultipartFile.fromBytes(
-          'image',
-          _omrImageBytes!,
-          filename: _omrImageFilename,
-        ))
-        ..files.add(http.MultipartFile.fromBytes(
-          'template',
-          templateData,
-          filename: 'class_8A_template.json',
-        ));
+      final response = await client.functions.invoke(
+        'omr-scan',
+        body: {
+          'file_base64': base64Image,
+          'mime_type': mimeType,
+          'class_id': _selectedClassId!,
+          'date': dateStr,
+        },
+      );
 
-      final streamed = await request.send().timeout(const Duration(seconds: 30));
-      final response = await http.Response.fromStream(streamed);
+      if (response.status == 200) {
+        Map<String, dynamic> data;
+        if (response.data is Map) {
+          data = Map<String, dynamic>.from(response.data as Map);
+        } else if (response.data is String) {
+          data = jsonDecode(response.data as String) as Map<String, dynamic>;
+        } else {
+          throw Exception('Invalid response format from OMR scan service');
+        }
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
         setState(() {
           _omrResult = _TeacherOmrScanResult.fromJson(data);
           _omrScanning = false;
         });
       } else {
+        String errStr = 'Scanner error (${response.status})';
+        if (response.data is Map && (response.data as Map).containsKey('error')) {
+          errStr = (response.data as Map)['error'].toString();
+        } else if (response.data != null) {
+          errStr = response.data.toString();
+        }
         setState(() {
-          _omrError = 'Scanner error (${response.statusCode}): ${response.body}';
+          _omrError = errStr;
           _omrScanning = false;
         });
       }
     } catch (e) {
       setState(() {
-        _omrError = 'Failed to connect to OMR service: $e';
+        _omrError = 'Scan failed: $e';
         _omrScanning = false;
       });
     }
@@ -503,19 +510,7 @@ class _TeacherAttendanceScreenState extends ConsumerState<TeacherAttendanceScree
     final dateStr = DateTime.now().toIso8601String().split('T').first;
 
     try {
-      final uri = Uri.parse('http://localhost:8002/attendance/resolve-review');
-      final resp = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'class_id': _selectedClassId,
-          'student_id': record.studentId,
-          'date': dateStr,
-          'status': resolvedStatus,
-        }),
-      ).timeout(const Duration(seconds: 4));
-
-      if (resp.statusCode != 200) {
+      if (record.studentId != null) {
         await client
             .schema('attendance')
             .from('records')

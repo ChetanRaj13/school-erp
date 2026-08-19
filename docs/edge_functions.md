@@ -17,6 +17,7 @@ are the real backend for the features they cover.
 | `razorpay-webhook` | Receives Razorpay payment confirmation callbacks | Pre-existing |
 | `document-extraction-trigger` | Takes a base64-encoded image, calls an OpenRouter vision LLM, writes extracted fields to the DB | **v2** — rewritten to accept JSON with a base64 image, matching the Supabase Flutter SDK's `functions.invoke()` pattern. Zero local image processing. |
 | `document-commit` | Commits a reviewed/approved extraction to its final destination table | New — built alongside the `document-extraction-trigger` rewrite |
+| `omr-scan` | Takes a base64-encoded OMR attendance sheet image, scans bubble marks via Vision-LLM, reconciles with class roster, and persists to `attendance.records` | Supports zero-server client workflow with instant review flag resolution. |
 
 ## Deployment notes
 
